@@ -39,7 +39,7 @@ export default function WelcomeScreen({ navigation }) {
             <Text style={styles.logoIcon}>✦</Text>
           </View>
           <Text style={styles.welcomeTitle}>Welcome</Text>
-          <Text style={styles.welcomeSubtitle}>Get anything done بسهولة</Text>
+          <Text style={styles.welcomeSubtitle}>Get anything done</Text>
         </View>
 
         {/* Form */}

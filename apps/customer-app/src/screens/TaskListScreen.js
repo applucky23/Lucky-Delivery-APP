@@ -142,13 +142,13 @@ const s = StyleSheet.create({
     textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, marginTop: 4 },
   bottomNav: {
     position: 'absolute', bottom: 0, width: '100%',
-    backgroundColor: 'white', flexDirection: 'row',
-    justifyContent: 'space-around', alignItems: 'center', height: 80,
-    borderTopWidth: 1, borderTopColor: '#f1f3ff',
-    elevation: 20, shadowColor: '#141b2b',
-    shadowOffset: { width: 0, height: -12 }, shadowOpacity: 0.06, shadowRadius: 32,
+    backgroundColor: '#f9f9ff', flexDirection: 'row',
+    justifyContent: 'space-around', alignItems: 'flex-start', height: 90,
+    borderTopWidth: 1, borderTopColor: '#e8e8f0',
+    shadowColor: '#141b2b',
+    shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.06, shadowRadius: 12,
   },
-  navItem: { alignItems: 'center', paddingTop: 12 },
+  navItem: { alignItems: 'center', paddingTop: 16, marginBottom: 10 },
   navText: { fontSize: 11, fontWeight: '700', marginTop: 4, color: '#6B7280' },
 });
 

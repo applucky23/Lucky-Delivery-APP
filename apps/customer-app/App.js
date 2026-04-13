@@ -16,6 +16,7 @@ import CouponScreen from './src/screens/CouponScreen';
 import HelpScreen from './src/screens/HelpScreen';
 import PrivacyScreen from './src/screens/PrivacyScreen';
 import TermsScreen from './src/screens/TermsScreen';
+import LanguageScreen from './src/screens/LanguageScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -39,6 +40,7 @@ export default function App() {
           <Stack.Screen name="Help" component={HelpScreen} />
           <Stack.Screen name="Privacy" component={PrivacyScreen} />
           <Stack.Screen name="Terms" component={TermsScreen} />
+          <Stack.Screen name="Language" component={LanguageScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>
