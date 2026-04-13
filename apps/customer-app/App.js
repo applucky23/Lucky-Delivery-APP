@@ -6,6 +6,16 @@ import OtpScreen from './src/screens/OtpScreen';
 import PersonalDetailScreen from './src/screens/PersonalDetailScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import RequestFormScreen from './src/screens/RequestFormScreen';
+import TaskListScreen from './src/screens/TaskListScreen';
+import TaskDetailScreen from './src/screens/TaskDetailScreen';
+import TaskTrackingScreen from './src/screens/TaskTrackingScreen';
+import ProfileScreen from './src/screens/ProfileScreen';
+import ProfileEditScreen from './src/screens/ProfileEditScreen';
+import WalletScreen from './src/screens/WalletScreen';
+import CouponScreen from './src/screens/CouponScreen';
+import HelpScreen from './src/screens/HelpScreen';
+import PrivacyScreen from './src/screens/PrivacyScreen';
+import TermsScreen from './src/screens/TermsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -17,8 +27,18 @@ export default function App() {
           <Stack.Screen name="Welcome" component={WelcomeScreen} />
           <Stack.Screen name="Otp" component={OtpScreen} />
           <Stack.Screen name="PersonalDetail" component={PersonalDetailScreen} />
-          <Stack.Screen name="Home" component={HomeScreen} />
+          <Stack.Screen name="Home" component={HomeScreen} options={{ animation: 'none' }} />
           <Stack.Screen name="RequestForm" component={RequestFormScreen} />
+          <Stack.Screen name="TaskList" component={TaskListScreen} options={{ animation: 'none' }} />
+          <Stack.Screen name="TaskDetail" component={TaskDetailScreen} />
+          <Stack.Screen name="TaskTracking" component={TaskTrackingScreen} />
+          <Stack.Screen name="Profile" component={ProfileScreen} options={{ animation: 'none' }} />
+          <Stack.Screen name="ProfileEdit" component={ProfileEditScreen} />
+          <Stack.Screen name="Wallet" component={WalletScreen} />
+          <Stack.Screen name="Coupon" component={CouponScreen} />
+          <Stack.Screen name="Help" component={HelpScreen} />
+          <Stack.Screen name="Privacy" component={PrivacyScreen} />
+          <Stack.Screen name="Terms" component={TermsScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>

@@ -123,11 +123,11 @@ const HomeScreen = ({ navigation }) => {
           <MaterialIcons name="home" size={28} color="#16A34A" />
           <Text style={[styles.navText, { color: '#16A34A' }]}>HOME</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
+        <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('TaskList')}>
           <MaterialIcons name="assignment" size={26} color="#6B7280" />
           <Text style={styles.navText}>TASKS</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
+        <TouchableOpacity style={styles.navItem} onPress={() => navigation.navigate('Profile')}>
           <MaterialIcons name="person" size={28} color="#6B7280" />
           <Text style={styles.navText}>PROFILE</Text>
         </TouchableOpacity>
