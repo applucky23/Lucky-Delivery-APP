@@ -1,0 +1,15 @@
+{
+  "name": "delivery-platform",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/customer-app",
+    "apps/worker-app",
+    "apps/admin-dashboard"
+  ],
+  "scripts": {
+    "customer": "npm run start --workspace=apps/customer-app",
+    "worker": "npm run start --workspace=apps/worker-app",
+    "admin": "npm run dev --workspace=apps/admin-dashboard"
+  }
+}
