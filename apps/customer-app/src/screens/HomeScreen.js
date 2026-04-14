@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   StyleSheet, 
   Text, 
@@ -11,11 +11,25 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
+import { getCustomer } from '../services/authService';
 
 const { width } = Dimensions.get('window');
 
-const HomeScreen = ({ navigation }) => {
+const HomeScreen = ({ navigation, route }) => {
   const insets = useSafeAreaInsets();
+  const [userName, setUserName] = useState('');
+
+  useEffect(() => {
+    // Name passed from PersonalDetail on first login
+    if (route?.params?.name) {
+      setUserName(route.params.name);
+      return;
+    }
+    // Returning user — load from saved customer data
+    getCustomer().then(c => {
+      if (c?.name) setUserName(c.name);
+    });
+  }, [route?.params?.name]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -38,7 +52,7 @@ const HomeScreen = ({ navigation }) => {
       >
         {/* Greeting Section */}
         <View style={styles.greetingSection}>
-          <Text style={styles.greetingTitle}>Hello, User</Text>
+          <Text style={styles.greetingTitle}>Hello, {userName || 'there'}</Text>
           <Text style={styles.greetingSubtitle}>What do you need today?</Text>
         </View>
 

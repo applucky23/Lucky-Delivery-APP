@@ -3,3 +3,4 @@ djangorestframework>=3.17
 django-cors-headers>=4.9
 python-dotenv>=1.2
 PyJWT>=2.12
+djangorestframework-simplejwt>=5.3

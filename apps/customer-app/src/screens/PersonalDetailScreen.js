@@ -11,14 +11,21 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function PersonalDetailScreen({ navigation }) {
   const [fullName, setFullName] = useState('');
 
-  const handleContinue = () => {
-    if (fullName.trim().length > 0) {
-      navigation.navigate('Home', { name: fullName.trim() });
+  const handleContinue = async () => {
+    if (fullName.trim().length === 0) return;
+    // Save name into the stored customer object
+    const raw = await AsyncStorage.getItem('@lucky_customer');
+    if (raw) {
+      const customer = JSON.parse(raw);
+      customer.name = fullName.trim();
+      await AsyncStorage.setItem('@lucky_customer', JSON.stringify(customer));
     }
+    navigation.navigate('Home', { name: fullName.trim() });
   };
 
   return (

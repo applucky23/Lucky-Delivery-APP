@@ -1,9 +1,10 @@
 import React from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, StatusBar,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, StatusBar, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
+import { clearAuth } from '../services/authService';
 
 const MOCK_USER = {
   name: 'Abebe Kebede',
@@ -95,7 +96,22 @@ const ProfileScreen = ({ navigation }) => {
 
         {/* Logout */}
         <View style={s.logoutSection}>
-          <TouchableOpacity style={s.logoutBtn} activeOpacity={0.7}>
+          <TouchableOpacity
+            style={s.logoutBtn}
+            activeOpacity={0.7}
+            onPress={() =>
+              Alert.alert('Logout', 'Are you sure you want to logout?', [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Logout', style: 'destructive',
+                  onPress: async () => {
+                    await clearAuth();
+                    navigation.reset({ index: 0, routes: [{ name: 'Welcome' }] });
+                  },
+                },
+              ])
+            }
+          >
             <MaterialIcons name="logout" size={18} color="#EF4444" />
             <Text style={s.logoutText}>Logout</Text>
           </TouchableOpacity>

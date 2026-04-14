@@ -1,6 +1,9 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useEffect, useState } from 'react';
+import { View, ActivityIndicator } from 'react-native';
+import { getToken } from './src/services/authService';
 import WelcomeScreen from './src/screens/WelcomeScreen';
 import OtpScreen from './src/screens/OtpScreen';
 import PersonalDetailScreen from './src/screens/PersonalDetailScreen';
@@ -21,10 +24,26 @@ import LanguageScreen from './src/screens/LanguageScreen';
 const Stack = createNativeStackNavigator();
 
 export default function App() {
+  const [initialRoute, setInitialRoute] = useState(null);
+
+  useEffect(() => {
+    getToken().then((token) => {
+      setInitialRoute(token ? 'Home' : 'Welcome');
+    });
+  }, []);
+
+  if (!initialRoute) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#16A34A" />
+      </View>
+    );
+  }
+
   return (
     <SafeAreaProvider>
       <NavigationContainer>
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={initialRoute}>
           <Stack.Screen name="Welcome" component={WelcomeScreen} />
           <Stack.Screen name="Otp" component={OtpScreen} />
           <Stack.Screen name="PersonalDetail" component={PersonalDetailScreen} />

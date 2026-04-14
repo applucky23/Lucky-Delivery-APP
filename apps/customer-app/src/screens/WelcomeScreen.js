@@ -7,15 +7,28 @@ import {
   StyleSheet,
   StatusBar,
   ScrollView,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { sendOTP } from '../services/authService';
 
 export default function WelcomeScreen({ navigation }) {
   const [phone, setPhone] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleContinue = () => {
-    if (phone.length >= 9) {
-      navigation.navigate('Otp', { phone });
+  const handleContinue = async () => {
+    if (phone.length < 9) return;
+    const fullPhone = `+251${phone}`;
+    setLoading(true);
+    try {
+      const data = await sendOTP(fullPhone);
+      // data.otp is returned in dev mode — pass it along so OtpScreen can show it
+      navigation.navigate('Otp', { phone: fullPhone, devOtp: data.otp });
+    } catch (err) {
+      Alert.alert('Error', err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -67,8 +80,12 @@ export default function WelcomeScreen({ navigation }) {
             style={phone.length < 9 ? [styles.continueBtn, styles.continueBtnDisabled] : styles.continueBtn}
             onPress={handleContinue}
             activeOpacity={0.85}
+            disabled={loading}
           >
-            <Text style={styles.continueBtnText}>Continue  →</Text>
+            {loading
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={styles.continueBtnText}>Continue  →</Text>
+            }
           </TouchableOpacity>
 
           <Text style={styles.smsNote}>

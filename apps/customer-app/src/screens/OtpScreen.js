@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,13 +7,27 @@ import {
   StyleSheet,
   StatusBar,
   ScrollView,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { verifyOTP, saveToken, sendOTP } from '../services/authService';
 
 export default function OtpScreen({ navigation, route }) {
-  const phone = route?.params?.phone || '';
+  const phone  = route?.params?.phone || '';
+  const devOtp = route?.params?.devOtp || '';
   const [otp, setOtp] = useState(['', '', '', '']);
+  const [loading, setLoading] = useState(false);
+  const [countdown, setCountdown] = useState(24);
+  const [currentDevOtp, setCurrentDevOtp] = useState(devOtp);
   const inputs = [useRef(null), useRef(null), useRef(null), useRef(null)];
+
+  // Countdown timer
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const timer = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [countdown]);
 
   const handleChange = (text, index) => {
     const newOtp = [...otp];
@@ -30,11 +44,30 @@ export default function OtpScreen({ navigation, route }) {
     }
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     const code = otp.join('');
-    if (code.length === 4) {
-      // TODO: verify OTP with backend
+    if (code.length !== 4) return;
+    setLoading(true);
+    try {
+      const data = await verifyOTP(phone, code);
+      await saveToken(data.access, data.refresh, data.customer);
       navigation.navigate('PersonalDetail');
+    } catch (err) {
+      Alert.alert('Invalid OTP', err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    try {
+      const data = await sendOTP(phone);
+      setCurrentDevOtp(data.otp);
+      setOtp(['', '', '', '']);
+      setCountdown(24);
+      inputs[0].current?.focus();
+    } catch (err) {
+      Alert.alert('Error', err.message);
     }
   };
 
@@ -100,11 +133,24 @@ export default function OtpScreen({ navigation, route }) {
           ))}
         </View>
 
+        {/* Dev OTP hint */}
+        {currentDevOtp ? (
+          <View style={styles.devHint}>
+            <Text style={styles.devHintText}>DEV — Your OTP: {currentDevOtp}</Text>
+          </View>
+        ) : null}
+
         {/* Resend */}
         <View style={styles.resendSection}>
-          <Text style={styles.resendTimer}>⏱  Resend code in 24s</Text>
-          <TouchableOpacity disabled>
-            <Text style={styles.resendBtn}>Resend Code</Text>
+          {countdown > 0 ? (
+            <Text style={styles.resendTimer}>Resend code in {countdown}s</Text>
+          ) : (
+            <Text style={styles.resendTimer}>Didn't receive the code?</Text>
+          )}
+          <TouchableOpacity onPress={handleResend} disabled={countdown > 0}>
+            <Text style={[styles.resendBtn, countdown > 0 && { opacity: 0.4 }]}>
+              Resend Code
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -113,8 +159,12 @@ export default function OtpScreen({ navigation, route }) {
           style={isComplete ? styles.confirmBtn : [styles.confirmBtn, styles.confirmBtnDisabled]}
           onPress={handleConfirm}
           activeOpacity={0.85}
+          disabled={loading}
         >
-          <Text style={styles.confirmBtnText}>Confirm  ›</Text>
+          {loading
+            ? <ActivityIndicator color="#fff" />
+            : <Text style={styles.confirmBtnText}>Confirm  ›</Text>
+          }
         </TouchableOpacity>
 
         {/* Footer */}
@@ -292,4 +342,9 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     textAlign: 'center',
   },
+  devHint: {
+    backgroundColor: '#FEF9C3', borderRadius: 10,
+    paddingHorizontal: 16, paddingVertical: 8, marginBottom: 16,
+  },
+  devHintText: { fontSize: 13, fontWeight: '700', color: '#92400E', textAlign: 'center' },
 });
