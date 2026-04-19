@@ -56,6 +56,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
 class DriverProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='driver_profile')
+    full_name  = models.CharField(max_length=100)
     is_available = models.BooleanField(default=False)
     is_verified = models.BooleanField(default=False)
     current_debt = models.DecimalField(max_digits=10, decimal_places=2, default=0)
