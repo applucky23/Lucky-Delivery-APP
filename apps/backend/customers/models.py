@@ -54,6 +54,19 @@ class User(AbstractBaseUser, PermissionsMixin):
         return self.username
 
 
+
+class UserProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    name = models.CharField(max_length=100)
+    profile_image = models.URLField(null=True, blank=True)
+    address = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    def __str__(self):
+        return f"Profile of {self.user.username}"
+
+
+
 class DriverProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='driver_profile')
     full_name  = models.CharField(max_length=100)
