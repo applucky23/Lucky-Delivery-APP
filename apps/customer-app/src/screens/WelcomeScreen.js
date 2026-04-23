@@ -22,9 +22,8 @@ export default function WelcomeScreen({ navigation }) {
     const fullPhone = `+251${phone}`;
     setLoading(true);
     try {
-      const data = await sendOTP(fullPhone);
-      // data.otp is returned in dev mode — pass it along so OtpScreen can show it
-      navigation.navigate('Otp', { phone: fullPhone, devOtp: data.otp });
+      await sendOTP(fullPhone);
+      navigation.navigate('Otp', { phone: fullPhone });
     } catch (err) {
       Alert.alert('Error', err.message);
     } finally {

@@ -4,6 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { getToken } from './src/services/authService';
+import { supabase } from './src/services/supabaseClient';
 import WelcomeScreen from './src/screens/WelcomeScreen';
 import OtpScreen from './src/screens/OtpScreen';
 import PersonalDetailScreen from './src/screens/PersonalDetailScreen';
@@ -27,9 +28,17 @@ export default function App() {
   const [initialRoute, setInitialRoute] = useState(null);
 
   useEffect(() => {
-    getToken().then((token) => {
-      setInitialRoute(token ? 'Home' : 'Welcome');
+    // Check Supabase session on launch
+    supabase.auth.getSession().then(({ data }) => {
+      setInitialRoute(data?.session ? 'Home' : 'Welcome');
     });
+
+    // Listen for auth state changes (e.g. token refresh, sign out)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) setInitialRoute('Welcome');
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   if (!initialRoute) {

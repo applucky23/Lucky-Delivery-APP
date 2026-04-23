@@ -1,49 +1,58 @@
+import os
+import logging
+import jwt
+from jwt.exceptions import InvalidTokenError, ExpiredSignatureError
+
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
-from django.contrib.auth import authenticate
-from django.utils.translation import gettext_lazy as _
+
+from .services import get_or_create_user_from_payload
+
+logger = logging.getLogger(__name__)
 
 
 class SupabaseJWTAuthentication(BaseAuthentication):
     """
-    Custom DRF authentication class for Supabase JWT tokens
+    Stateless JWT authentication using Supabase-issued tokens.
+    Responsibilities:
+      1. Extract Bearer token from Authorization header
+      2. Verify and decode JWT using SUPABASE_JWT_SECRET
+      3. Delegate user sync to services.py
+      4. Return (user, token)
     """
-    
+
     def authenticate(self, request):
-        """
-        Authenticate the request and return a two-tuple of (user, token).
-        """
-        auth_header = request.META.get('HTTP_AUTHORIZATION')
-        
-        if not auth_header:
+        auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+        if not auth_header.startswith('Bearer '):
             return None
-            
+
+        token = auth_header.split(' ', 1)[1].strip()
+        if not token:
+            return None
+
+        payload = self._decode(token)
+        user, _ = get_or_create_user_from_payload(payload)
+
+        if not user.is_active:
+            raise AuthenticationFailed('User account is disabled.')
+
+        return (user, token)
+
+    def _decode(self, token):
+        secret = os.getenv('SUPABASE_JWT_SECRET', '').strip()
+        if not secret:
+            raise AuthenticationFailed('SUPABASE_JWT_SECRET is not configured.')
         try:
-            # Extract token from "Bearer <token>" format
-            auth_parts = auth_header.split()
-            
-            if len(auth_parts) != 2 or auth_parts[0].lower() != 'bearer':
-                return None
-                
-            token = auth_parts[1]
-            
-            # Use our custom backend to authenticate
-            user = authenticate(request=request, supabase_token=token)
-            
-            if not user:
-                raise AuthenticationFailed(_('Invalid token.'))
-                
-            if not user.is_active:
-                raise AuthenticationFailed(_('User inactive or deleted.'))
-                
-            return (user, token)
-            
-        except (ValueError, IndexError):
-            raise AuthenticationFailed(_('Invalid token header.'))
-    
+            return jwt.decode(
+                token,
+                secret,
+                algorithms=['HS256'],
+                audience='authenticated',
+            )
+        except ExpiredSignatureError:
+            raise AuthenticationFailed('Token has expired.')
+        except InvalidTokenError as e:
+            raise AuthenticationFailed(f'Invalid token: {e}')
+
     def authenticate_header(self, request):
-        """
-        Return a string to be used as the value of the `WWW-Authenticate`
-        header in a `401 Unauthenticated` response.
-        """
         return 'Bearer'

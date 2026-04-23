@@ -19,12 +19,6 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 # Custom user model
 AUTH_USER_MODEL = 'customers.User'
 
-# Custom authentication backends
-AUTHENTICATION_BACKENDS = [
-    'customers.auth.SupabaseAuthBackend',
-    'django.contrib.auth.backends.ModelBackend',  # Keep as fallback
-]
-
 # Supabase configuration
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_ANON_KEY = os.getenv('SUPABASE_ANON_KEY')

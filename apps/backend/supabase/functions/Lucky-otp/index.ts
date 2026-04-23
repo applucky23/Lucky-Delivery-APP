@@ -1,49 +1,79 @@
+// @ts-nocheck
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { Webhook } from "https://esm.sh/standardwebhooks@1.0.0"
 
 serve(async (req) => {
   try {
-    const body = await req.json()
+    const hookSecret = Deno.env.get('SEND_SMS_HOOK_SECRET')
+    const payload    = await req.text()
 
-    const phone = body.phone || body.user?.phone
-    const otp = body.otp || body.sms?.otp
-
-    if (!phone || !otp) {
-      // Formatted error so Supabase understands the failure
-      return new Response(JSON.stringify({
-        error: { message: "Missing phone or otp", http_code: 400 }
-      }), { status: 200, headers: { "Content-Type": "application/json" } })
+    // Verify the request is genuinely from Supabase
+    if (hookSecret) {
+      // Strip the v1,whsec_ prefix — standardwebhooks expects raw base64
+      const rawSecret = hookSecret.replace('v1,whsec_', '')
+      const wh = new Webhook(rawSecret)
+      try {
+        wh.verify(payload, Object.fromEntries(req.headers))
+      } catch (err) {
+        console.error('[Lucky-otp] Webhook signature invalid:', err)
+        return new Response(JSON.stringify({
+          error: { message: 'Unauthorized', http_code: 401 }
+        }), { status: 401, headers: { 'Content-Type': 'application/json' } })
+      }
     }
 
-    const AFRO_TOKEN = Deno.env.get("AFROMESSAGE_TOKEN")
+    const body  = JSON.parse(payload)
+    const phone = body.user?.phone || body.phone
+    const otp   = body.sms?.otp   || body.otp
 
-    const response = await fetch("https://api.afromessage.com/api/send", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${AFRO_TOKEN}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        to: phone,
-        message: `Your Lucky Delivery code is: ${otp}. Do not share this.`
-      }),
+    console.log('[Lucky-otp] phone:', phone, 'otp:', otp ? '****' : 'MISSING')
+
+    if (!phone || !otp) {
+      return new Response(JSON.stringify({
+        error: { message: 'Missing phone or otp', http_code: 400 }
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+
+    const AFRO_TOKEN  = Deno.env.get('AFROMESSAGE_TOKEN')
+    const AFRO_SENDER = Deno.env.get('AFROMESSAGE_SENDER') || ''
+    const AFRO_FROM   = Deno.env.get('AFROMESSAGE_FROM')   || ''
+
+    if (!AFRO_TOKEN) {
+      return new Response(JSON.stringify({
+        error: { message: 'SMS provider not configured', http_code: 500 }
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+
+    const params = new URLSearchParams({
+      to:      phone,
+      message: `Your Lucky verification code is: ${otp}. Valid for 5 minutes.`,
+      ...(AFRO_SENDER && { sender: AFRO_SENDER }),
+      ...(AFRO_FROM   && { from:   AFRO_FROM }),
     })
 
-    const result = await response.json()
+    const response = await fetch(
+      `https://api.afromessage.com/api/send?${params.toString()}`,
+      {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${AFRO_TOKEN}` },
+      }
+    )
 
-    if (result.acknowledge === "success" || result.acknowledge === true) {
-      // 204 No Content is the cleanest way to signal success to Supabase
+    const result = await response.json()
+    console.log('[Lucky-otp] AfroMessage:', JSON.stringify(result))
+
+    if (result.acknowledge === 'success') {
       return new Response(null, { status: 204 })
     }
 
-    // Formatted error for AfroMessage failures
     return new Response(JSON.stringify({
-      error: { message: "AfroMessage failed to send", http_code: 400 }
-    }), { status: 200, headers: { "Content-Type": "application/json" } })
+      error: { message: `AfroMessage error: ${JSON.stringify(result.response)}`, http_code: 400 }
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })
 
   } catch (err) {
-    console.error("Hook error:", err)
+    console.error('[Lucky-otp] Exception:', err)
     return new Response(JSON.stringify({
-      error: { message: err.message, http_code: 500 }
-    }), { status: 200, headers: { "Content-Type": "application/json" } })
+      error: { message: String(err), http_code: 500 }
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
 })

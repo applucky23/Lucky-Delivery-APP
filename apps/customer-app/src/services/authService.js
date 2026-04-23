@@ -1,43 +1,72 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from './supabaseClient';
 
-const BASE_URL = 'http://10.218.173.1:8000/api/auth';
+const DJANGO_URL = 'http://172.20.10.5:8000/api';
+
+// ── Supabase Phone OTP (via AfroMessage hook) ─────────────────────────────────
 
 export const sendOTP = async (phone) => {
-  const res = await fetch(`${BASE_URL}/send-otp/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phone }),
+  const { error } = await supabase.auth.signInWithOtp({ phone });
+  if (error) throw new Error(error.message);
+  return { message: 'OTP sent via SMS.' };
+};
+
+export const verifyOTP = async (phone, token) => {
+  const { data, error } = await supabase.auth.verifyOtp({
+    phone,
+    token,
+    type: 'sms',
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || data.phone?.[0] || 'Failed to send OTP');
-  return data; // { message, otp (dev), phone }
+  if (error) throw new Error(error.message);
+  return data; // { session: { access_token, refresh_token }, user }
 };
 
-export const verifyOTP = async (phone, code) => {
-  const res = await fetch(`${BASE_URL}/verify-otp/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phone, code }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Verification failed');
-  return data; // { access, refresh, customer }
+// ── Session / token helpers ───────────────────────────────────────────────────
+
+export const getSession = async () => {
+  const { data } = await supabase.auth.getSession();
+  return data?.session ?? null;
 };
 
-export const saveToken = async (access, refresh, customer) => {
-  await AsyncStorage.multiSet([
-    ['@lucky_access',   access],
-    ['@lucky_refresh',  refresh],
-    ['@lucky_customer', JSON.stringify(customer)],
-  ]);
+export const getToken = async () => {
+  const session = await getSession();
+  return session?.access_token ?? null;
 };
 
-export const getToken = () => AsyncStorage.getItem('@lucky_access');
+export const saveCustomerName = async (name) => {
+  const raw = await AsyncStorage.getItem('@lucky_customer');
+  const customer = raw ? JSON.parse(raw) : {};
+  customer.name = name;
+  await AsyncStorage.setItem('@lucky_customer', JSON.stringify(customer));
+};
 
 export const getCustomer = async () => {
-  const raw = await AsyncStorage.getItem('@lucky_customer');
-  return raw ? JSON.parse(raw) : null;
+  // Prefer Supabase session user
+  const session = await getSession();
+  if (session?.user) {
+    const raw = await AsyncStorage.getItem('@lucky_customer');
+    const local = raw ? JSON.parse(raw) : {};
+    return {
+      id:    session.user.id,
+      phone: session.user.phone || '',
+      email: session.user.email || '',
+      name:  local.name || '',
+    };
+  }
+  return null;
 };
 
-export const clearAuth = () =>
-  AsyncStorage.multiRemove(['@lucky_access', '@lucky_refresh', '@lucky_customer']);
+export const clearAuth = async () => {
+  await supabase.auth.signOut();
+  await AsyncStorage.removeItem('@lucky_customer');
+};
+
+// ── Django API helper ─────────────────────────────────────────────────────────
+
+export const apiGet = async (path) => {
+  const token = await getToken();
+  const res = await fetch(`${DJANGO_URL}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.json();
+};
