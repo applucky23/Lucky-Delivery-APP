@@ -1,4 +1,5 @@
 import logging
+from django.db import IntegrityError
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -40,17 +41,23 @@ class UserProfileView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        profile, _ = UserProfile.objects.get_or_create(
-            user=request.user,
-            defaults={'name': request.user.username}
-        )
+        try:
+            profile, _ = UserProfile.objects.get_or_create(
+                user=request.user,
+                defaults={'name': request.user.username}
+            )
+        except IntegrityError:
+            profile = UserProfile.objects.get(user=request.user)
         return Response(UserProfileSerializer(profile).data)
 
     def put(self, request):
-        profile, _ = UserProfile.objects.get_or_create(
-            user=request.user,
-            defaults={'name': ''}
-        )
+        try:
+            profile, _ = UserProfile.objects.get_or_create(
+                user=request.user,
+                defaults={'name': ''}
+            )
+        except IntegrityError:
+            profile = UserProfile.objects.get(user=request.user)
         serializer = UserProfileSerializer(profile, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()

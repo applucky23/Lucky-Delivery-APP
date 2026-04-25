@@ -16,9 +16,9 @@ logger = logging.getLogger(__name__)
 _JWKS_CACHE = {}
 
 
-def _get_public_key(kid: str):
+def _get_public_key(kid: str, force_refresh: bool = False):
     """Fetch and cache Supabase JWKS public key by kid."""
-    if kid in _JWKS_CACHE:
+    if kid in _JWKS_CACHE and not force_refresh:
         return _JWKS_CACHE[kid]
 
     supabase_url = os.getenv('SUPABASE_URL', '').rstrip('/')
@@ -92,8 +92,23 @@ class SupabaseJWTAuthentication(BaseAuthentication):
                 )
             except ExpiredSignatureError:
                 raise AuthenticationFailed('Token has expired.')
-            except InvalidTokenError as e:
-                raise AuthenticationFailed(f'Invalid token: {e}')
+            except InvalidTokenError:
+                # Key might be rotated — refetch once and retry
+                logger.warning('[Auth] Verification failed, refetching JWKS...')
+                public_key = _get_public_key(kid, force_refresh=True) if kid else None
+                if public_key:
+                    try:
+                        return jwt.decode(
+                            token,
+                            public_key,
+                            algorithms=['ES256'],
+                            audience='authenticated',
+                        )
+                    except ExpiredSignatureError:
+                        raise AuthenticationFailed('Token has expired.')
+                    except InvalidTokenError as e:
+                        raise AuthenticationFailed(f'Invalid token: {e}')
+                raise AuthenticationFailed('Invalid token signature.')
         else:
             # JWKS fetch failed — fallback: verify issuer only
             logger.warning('[Auth] JWKS unavailable, falling back to issuer check only.')
