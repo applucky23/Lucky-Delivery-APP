@@ -11,16 +11,14 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { verifyOTP, saveToken, sendOTP } from '../services/authService';
+import { verifyOTP, saveCustomerName, sendOTP } from '../services/authService';
 
 export default function OtpScreen({ navigation, route }) {
-  const phone  = route?.params?.phone || '';
-  const devOtp = route?.params?.devOtp || '';
-  const [otp, setOtp] = useState(['', '', '', '']);
-  const [loading, setLoading] = useState(false);
-  const [countdown, setCountdown] = useState(24);
-  const [currentDevOtp, setCurrentDevOtp] = useState(devOtp);
-  const inputs = [useRef(null), useRef(null), useRef(null), useRef(null)];
+  const phone = route?.params?.phone || '';
+  const [otp, setOtp]             = useState(['', '', '', '', '', '']);
+  const [loading, setLoading]     = useState(false);
+  const [countdown, setCountdown] = useState(60);
+  const inputs = [useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null)];
 
   // Countdown timer
   useEffect(() => {
@@ -33,24 +31,24 @@ export default function OtpScreen({ navigation, route }) {
     const newOtp = [...otp];
     newOtp[index] = text;
     setOtp(newOtp);
-    if (text && index < 3) {
-      inputs[index + 1].current.focus();
+    if (text && index < 5) {
+      inputs[index + 1].current?.focus();
     }
   };
 
   const handleKeyPress = (e, index) => {
     if (e.nativeEvent.key === 'Backspace' && !otp[index] && index > 0) {
-      inputs[index - 1].current.focus();
+      inputs[index - 1].current?.focus();
     }
   };
 
   const handleConfirm = async () => {
     const code = otp.join('');
-    if (code.length !== 4) return;
+    if (code.length !== 6) return;
     setLoading(true);
     try {
-      const data = await verifyOTP(phone, code);
-      await saveToken(data.access, data.refresh, data.customer);
+      await verifyOTP(phone, code);
+      // Supabase session is now active — navigate forward
       navigation.navigate('PersonalDetail');
     } catch (err) {
       Alert.alert('Invalid OTP', err.message);
@@ -61,10 +59,9 @@ export default function OtpScreen({ navigation, route }) {
 
   const handleResend = async () => {
     try {
-      const data = await sendOTP(phone);
-      setCurrentDevOtp(data.otp);
-      setOtp(['', '', '', '']);
-      setCountdown(24);
+      await sendOTP(phone);
+      setOtp(['', '', '', '', '', '']);
+      setCountdown(60);
       inputs[0].current?.focus();
     } catch (err) {
       Alert.alert('Error', err.message);
@@ -132,13 +129,6 @@ export default function OtpScreen({ navigation, route }) {
             />
           ))}
         </View>
-
-        {/* Dev OTP hint */}
-        {currentDevOtp ? (
-          <View style={styles.devHint}>
-            <Text style={styles.devHintText}>DEV — Your OTP: {currentDevOtp}</Text>
-          </View>
-        ) : null}
 
         {/* Resend */}
         <View style={styles.resendSection}>
@@ -280,18 +270,18 @@ const styles = StyleSheet.create({
   otpRow: {
     flexDirection: 'row',
     marginBottom: 40,
+    gap: 8,
   },
   otpInput: {
-    width: 64,
-    height: 72,
-    borderRadius: 16,
+    width: 44,
+    height: 56,
+    borderRadius: 12,
     backgroundColor: '#ffffff',
     borderWidth: 2,
     borderColor: '#d0d8cf',
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '700',
     color: '#191c1e',
-    marginHorizontal: 6,
     elevation: 1,
   },
   otpInputFilled: {
@@ -342,9 +332,4 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     textAlign: 'center',
   },
-  devHint: {
-    backgroundColor: '#FEF9C3', borderRadius: 10,
-    paddingHorizontal: 16, paddingVertical: 8, marginBottom: 16,
-  },
-  devHintText: { fontSize: 13, fontWeight: '700', color: '#92400E', textAlign: 'center' },
 });
