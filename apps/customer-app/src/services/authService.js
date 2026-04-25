@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabaseClient';
 
-const DJANGO_URL = 'http://172.20.10.5:8000/api';
+const DJANGO_URL = 'https://49a3-102-213-68-125.ngrok-free.app/api/v1';
 
 // ── Supabase Phone OTP (via AfroMessage hook) ─────────────────────────────────
 
@@ -61,12 +61,37 @@ export const clearAuth = async () => {
   await AsyncStorage.removeItem('@lucky_customer');
 };
 
-// ── Django API helper ─────────────────────────────────────────────────────────
+// ── Django API helpers ────────────────────────────────────────────────────────
 
 export const apiGet = async (path) => {
   const token = await getToken();
   const res = await fetch(`${DJANGO_URL}${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'ngrok-skip-browser-warning': '1',
+      'User-Agent': 'LuckyApp/1.0',
+    },
   });
   return res.json();
 };
+
+export const apiPut = async (path, body) => {
+  const token = await getToken();
+  const res = await fetch(`${DJANGO_URL}${path}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': '1',
+      'User-Agent': 'LuckyApp/1.0',
+    },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+};
+
+// ── Profile helpers ───────────────────────────────────────────────────────────
+
+export const getProfile = () => apiGet('/profile/');
+
+export const updateProfile = (data) => apiPut('/profile/', data);

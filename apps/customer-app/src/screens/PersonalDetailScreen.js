@@ -1,26 +1,25 @@
 import { useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  StatusBar,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
+  View, Text, TextInput, TouchableOpacity,
+  StyleSheet, StatusBar, ScrollView,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { saveCustomerName } from '../services/authService';
+import { saveCustomerName, updateProfile } from '../services/authService';
 
 export default function PersonalDetailScreen({ navigation }) {
   const [fullName, setFullName] = useState('');
 
   const handleContinue = async () => {
     if (fullName.trim().length === 0) return;
-    await saveCustomerName(fullName.trim());
-    navigation.navigate('Home', { name: fullName.trim() });
+    const name = fullName.trim();
+    await saveCustomerName(name);
+    try {
+      await updateProfile({ name });
+    } catch (e) {
+      console.warn('[Profile] Save failed:', e.message);
+    }
+    navigation.navigate('Home', { name });
   };
 
   return (

@@ -1,16 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, StatusBar, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import { clearAuth } from '../services/authService';
-
-const MOCK_USER = {
-  name: 'Abebe Kebede',
-  phone: '+251 911 234 567',
-  initials: 'AK',
-};
+import { clearAuth, getProfile, getCustomer, getToken } from '../services/authService';
 
 // ── Reusable menu row ─────────────────────────────────────────────────────────
 const MenuRow = ({ icon, label, onPress, last }) => (
@@ -46,8 +40,34 @@ const SectionCard = ({ title, children }) => (
 // ── Screen ────────────────────────────────────────────────────────────────────
 const ProfileScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
+  const [profile, setProfile] = useState({ name: '', phone: '' });
 
-  const go = (screen) => navigation.navigate(screen);
+  useEffect(() => {
+    loadProfile();
+  }, []);
+
+  // Reload when coming back from ProfileEdit
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', loadProfile);
+    return unsubscribe;
+  }, [navigation]);
+
+  const loadProfile = async () => {
+    try {
+      const data = await getProfile();
+      if (data?.name !== undefined) setProfile(data);
+      else {
+        const customer = await getCustomer();
+        if (customer) setProfile({ name: customer.name, phone: customer.phone });
+      }
+    } catch (_) {}
+  };
+
+  const initials = profile.name
+    ? profile.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+    : '?';
+
+  const go = (screen, params) => navigation.navigate(screen, params);
 
   return (
     <View style={[s.container, { paddingTop: insets.top }]}>
@@ -64,11 +84,11 @@ const ProfileScreen = ({ navigation }) => {
         {/* User card */}
         <TouchableOpacity style={s.userCard} activeOpacity={0.8} onPress={() => go('ProfileEdit')}>
           <View style={s.avatar}>
-            <Text style={s.avatarText}>{MOCK_USER.initials}</Text>
+            <Text style={s.avatarText}>{initials}</Text>
           </View>
           <View style={s.userInfo}>
-            <Text style={s.userName}>{MOCK_USER.name}</Text>
-            <Text style={s.userPhone}>{MOCK_USER.phone}</Text>
+            <Text style={s.userName}>{profile.name || 'Set your name'}</Text>
+            <Text style={s.userPhone}>{profile.phone || ''}</Text>
           </View>
           <View style={s.editBadge}>
             <MaterialIcons name="edit" size={16} color="#16A34A" />

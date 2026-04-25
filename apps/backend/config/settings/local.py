@@ -11,6 +11,7 @@ from .base import *
 DEBUG = True
 
 ALLOWED_HOSTS = ['*']
+CSRF_TRUSTED_ORIGINS = ['https://1ae4-102-218-51-6.ngrok-free.app']
 
 # CORS settings for development
 CORS_ALLOW_ALL_ORIGINS = True
