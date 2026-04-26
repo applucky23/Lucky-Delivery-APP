@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, DriverProfile
+from .models import User, DriverProfile, UserProfile
 
 
 @admin.register(User)
@@ -37,10 +37,42 @@ class DriverProfileAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('Driver Info', {'fields': ('user', 'is_available', 'is_verified', 'is_online')}),
+        ('Contact', {'fields': ('email',)}),
         ('Financial', {'fields': ('current_debt', 'debt_limit', 'is_blocked')}),
         ('Stats', {'fields': ('total_tasks',)}),
         ('Documents', {'fields': ('profile_image', 'id_image')}),
         ('Dates', {'fields': ('created_at',)}),
     )
     
-    readonly_fields = ('created_at', 'is_blocked')
+    readonly_fields = ('email','created_at', 'is_blocked')
+    
+    def email(self, obj):
+        return obj.user.email
+    email.short_description = 'Email'
+
+
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ('user', 'name', 'email', 'created_at', 'updated_at')
+    list_filter = ('created_at', 'updated_at')
+    search_fields = ('user__phone_number', 'user__username', 'name', 'user__email')
+    ordering = ('-created_at',)
+    
+    fieldsets = (
+        ('User Info', {'fields': ('user', 'name')}),
+        ('Contact', {'fields': ('email',)}),
+        ('Details', {'fields': ('address', 'profile_image')}),
+        ('Timestamps', {'fields': ('created_at', 'updated_at')}),
+    )
+    
+    readonly_fields = ('email','created_at', 'updated_at')
+    
+    def email(self, obj):
+        return obj.user.email
+    email.short_description = 'Email'
+    
+    def get_search_results(self, request, queryset, search_term):
+        queryset, use_distinct = super().get_search_results(request, queryset, search_term)
+        if search_term:
+            queryset |= self.model.objects.filter(user__email__icontains=search_term)
+        return queryset, use_distinct

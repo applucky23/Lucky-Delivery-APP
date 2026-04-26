@@ -4,7 +4,6 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework import status
-
 from .models import UserProfile
 from .serializers import UserProfileSerializer
 
@@ -42,22 +41,27 @@ class UserProfileView(APIView):
 
     def get(self, request):
         try:
-            profile, _ = UserProfile.objects.get_or_create(
+            profile, created = UserProfile.objects.get_or_create(
                 user=request.user,
                 defaults={'name': request.user.username}
             )
+            if created:
+                logger.info(f'[Profile] Created profile for user id={request.user.id}')
         except IntegrityError:
             profile = UserProfile.objects.get(user=request.user)
         return Response(UserProfileSerializer(profile).data)
 
     def put(self, request):
         try:
-            profile, _ = UserProfile.objects.get_or_create(
+            profile, created = UserProfile.objects.get_or_create(
                 user=request.user,
-                defaults={'name': ''}
+                defaults={'name': request.user.username}
             )
+            if created:
+                logger.info(f'[Profile] Created profile for user id={request.user.id}')
         except IntegrityError:
             profile = UserProfile.objects.get(user=request.user)
+        
         serializer = UserProfileSerializer(profile, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
