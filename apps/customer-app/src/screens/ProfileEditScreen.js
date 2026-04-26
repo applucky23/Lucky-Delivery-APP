@@ -46,16 +46,18 @@ const ProfileEditScreen = ({ navigation }) => {
     if (!name.trim()) { Alert.alert('Required', 'Name cannot be empty.'); return; }
     setLoading(true);
     try {
-      const result = await updateProfile({ name: name.trim(), email: email.trim() });
+      const payload = { name: name.trim() };
+      if (email.trim()) payload.email = email.trim();
+      const result = await updateProfile(payload);
       console.log('[ProfileEdit] update result:', JSON.stringify(result));
-      if (result?.name) {
+      if (result?.id) {
         await saveCustomerName(result.name);
         Alert.alert('Updated', 'Your profile has been updated.', [
           { text: 'OK', onPress: () => navigation.goBack() }
         ]);
       } else {
         console.log('[ProfileEdit] unexpected result:', JSON.stringify(result));
-        Alert.alert('Error', result?.detail || JSON.stringify(result) || 'Failed to update profile.');
+        Alert.alert('Error', result?.detail || JSON.stringify(result) || 'Failed to update.');
       }
     } catch (err) {
       console.log('[ProfileEdit] update error:', err.message);

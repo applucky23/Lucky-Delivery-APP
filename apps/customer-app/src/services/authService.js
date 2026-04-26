@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabaseClient';
 
-const DJANGO_URL = 'https://7fa9-102-213-68-8.ngrok-free.app/api/v1';
+const DJANGO_URL = 'https://9469-102-213-68-8.ngrok-free.app/api/v1';
 
 // ── Supabase Phone OTP (via AfroMessage hook) ─────────────────────────────────
 
