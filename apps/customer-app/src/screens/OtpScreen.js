@@ -11,7 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { verifyOTP, saveCustomerName, sendOTP } from '../services/authService';
+import { verifyOTP, saveCustomerName, sendOTP, getProfile } from '../services/authService';
 
 export default function OtpScreen({ navigation, route }) {
   const phone = route?.params?.phone || '';
@@ -48,7 +48,8 @@ export default function OtpScreen({ navigation, route }) {
     setLoading(true);
     try {
       await verifyOTP(phone, code);
-      // Supabase session is now active — navigate forward
+      // Immediately sync user to Django DB — makes user visible in admin
+      await getProfile().catch(() => {});
       navigation.navigate('PersonalDetail');
     } catch (err) {
       Alert.alert('Invalid OTP', err.message);

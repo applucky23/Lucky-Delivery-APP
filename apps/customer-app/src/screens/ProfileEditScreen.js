@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import { getProfile, updateProfile, getCustomer, saveCustomerName } from '../services/authService';
+import { getProfile, updateProfile, getCustomer, saveCustomerName, getCachedProfile } from '../services/authService';
 
 const ProfileEditScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
@@ -17,6 +17,14 @@ const ProfileEditScreen = ({ navigation }) => {
   useEffect(() => {
     const load = async () => {
       try {
+        // Show cached instantly
+        const cached = await getCachedProfile();
+        if (cached?.name !== undefined) {
+          setName(cached.name || '');
+          setEmail(cached.email || '');
+          setPhone(cached.phone || '');
+          return;
+        }
         const data = await getProfile();
         if (data?.name !== undefined) {
           setName(data.name || '');
@@ -39,16 +47,19 @@ const ProfileEditScreen = ({ navigation }) => {
     setLoading(true);
     try {
       const result = await updateProfile({ name: name.trim(), email: email.trim() });
+      console.log('[ProfileEdit] update result:', JSON.stringify(result));
       if (result?.name) {
         await saveCustomerName(result.name);
         Alert.alert('Updated', 'Your profile has been updated.', [
           { text: 'OK', onPress: () => navigation.goBack() }
         ]);
       } else {
-        Alert.alert('Error', result?.detail || 'Failed to update profile.');
+        console.log('[ProfileEdit] unexpected result:', JSON.stringify(result));
+        Alert.alert('Error', result?.detail || JSON.stringify(result) || 'Failed to update profile.');
       }
     } catch (err) {
-      Alert.alert('Error', 'Failed to update profile.');
+      console.log('[ProfileEdit] update error:', err.message);
+      Alert.alert('Error', err.message);
     } finally {
       setLoading(false);
     }
