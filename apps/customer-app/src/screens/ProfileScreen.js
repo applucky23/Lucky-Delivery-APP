@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import { clearAuth, getProfile, getCustomer, getToken } from '../services/authService';
+import { clearAuth, getProfile, getCachedProfile, getCustomer, getToken } from '../services/authService';
 
 // ── Reusable menu row ─────────────────────────────────────────────────────────
 const MenuRow = ({ icon, label, onPress, last }) => (
@@ -53,13 +53,17 @@ const ProfileScreen = ({ navigation }) => {
   }, [navigation]);
 
   const loadProfile = async () => {
+    // 1. Show cached data instantly (no delay)
+    const cached = await getCachedProfile();
+    if (cached?.name) setProfile(cached);
+    else {
+      const customer = await getCustomer();
+      if (customer?.name) setProfile({ name: customer.name, phone: customer.phone });
+    }
+    // 2. Refresh from server in background
     try {
       const data = await getProfile();
       if (data?.name !== undefined) setProfile(data);
-      else {
-        const customer = await getCustomer();
-        if (customer) setProfile({ name: customer.name, phone: customer.phone });
-      }
     } catch (_) {}
   };
 

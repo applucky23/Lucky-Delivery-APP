@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabaseClient';
 
-const DJANGO_URL = 'https://49a3-102-213-68-125.ngrok-free.app/api/v1';
+const DJANGO_URL = 'https://9469-102-213-68-8.ngrok-free.app/api/v1';
 
 // ── Supabase Phone OTP (via AfroMessage hook) ─────────────────────────────────
 
@@ -92,6 +92,18 @@ export const apiPut = async (path, body) => {
 
 // ── Profile helpers ───────────────────────────────────────────────────────────
 
-export const getProfile = () => apiGet('/profile/');
+export const getProfile = async () => {
+  const data = await apiGet('/profile/');
+  // Cache for instant load next time
+  if (data?.name !== undefined) {
+    await AsyncStorage.setItem('@lucky_profile', JSON.stringify(data));
+  }
+  return data;
+};
+
+export const getCachedProfile = async () => {
+  const raw = await AsyncStorage.getItem('@lucky_profile');
+  return raw ? JSON.parse(raw) : null;
+};
 
 export const updateProfile = (data) => apiPut('/profile/', data);

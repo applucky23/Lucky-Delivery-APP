@@ -52,7 +52,7 @@ const HomeScreen = ({ navigation, route }) => {
       >
         {/* Greeting Section */}
         <View style={styles.greetingSection}>
-          <Text style={styles.greetingTitle}>Hello, {userName || 'there'}</Text>
+          <Text style={styles.greetingTitle}>Hello, {userName ? userName.split(' ')[0] : 'there'}</Text>
           <Text style={styles.greetingSubtitle}>What do you need today?</Text>
         </View>
 
