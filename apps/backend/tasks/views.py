@@ -65,7 +65,7 @@ class TaskListCreateView(APIView):
             serializer = TaskSerializer(data=data)
         
         if serializer.is_valid():
-            task = serializer.save()
+            task = serializer.save(user=request.user)
             
             # Return appropriate response based on user role
             if user.role == 'ADMIN':
@@ -93,7 +93,7 @@ class TaskRetrieveApIView(RetrieveAPIView):
 
 
 class TaskUpdateView(UpdateAPIView):
-    """Handle individual task updates"""
+    """Handle individual task updates with partial update support"""
     queryset = Task.objects.select_related('user', 'driver')
     permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
     lookup_field = 'id'
@@ -103,6 +103,11 @@ class TaskUpdateView(UpdateAPIView):
         if self.request.user.role == 'ADMIN':
             return AdminTaskSerializer
         return TaskDetailSerializer
+
+    def get_serializer(self, *args, **kwargs):
+        """Ensure partial updates are supported"""
+        kwargs['partial'] = self.request.method == 'PATCH'
+        return super().get_serializer(*args, **kwargs)
 
     def perform_update(self, serializer):
         """Validate task can be updated before saving"""
@@ -116,8 +121,27 @@ class TaskCancelAPIView(APIView):
 
     def post(self, request, task_id):
         """Cancel a task - soft delete a task (only if user is admin or task owner and task is in appropriate status)"""
-        task = Task.objects.get(id=task_id)
-        cancel(task,request.user)
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        try:
+            task = Task.objects.get(id=task_id)
+            cancel(task,request.user)
+            return Response(
+                {'message': f'Task #{task.id} has been successfully cancelled'}, 
+                status=status.HTTP_200_OK
+            )
+        except Task.DoesNotExist:
+            return Response(
+                {'error': 'Task not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except ValueError as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {'error': 'An unexpected error occurred'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 

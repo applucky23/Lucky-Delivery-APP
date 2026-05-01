@@ -28,20 +28,24 @@ class TaskSerializer(ModelSerializer):
         return value
 
     def validate(self, attrs):
-        """Validate coordinates and ensure they are provided"""
-        required_fields = ['pickup_lat', 'pickup_lng', 'dropoff_lat', 'dropoff_lng']
-        for field in required_fields:
-            if field not in attrs or attrs[field] is None:
-                raise ValidationError(f"{field} is required")
+        """Validate coordinates and ensure they are provided (for full updates only)"""
+        # Skip required field validation for partial updates
+        if not self.partial:
+            required_fields = ['pickup_lat', 'pickup_lng', 'dropoff_lat', 'dropoff_lng']
+            for field in required_fields:
+                if field not in attrs or attrs[field] is None:
+                    raise ValidationError(f"{field} is required")
         
-        # Validate coordinate ranges
+        # Validate coordinate ranges only if coordinates are provided
         for coord_field in ['pickup_lat', 'dropoff_lat']:
-            if not -90 <= attrs[coord_field] <= 90:
-                raise ValidationError(f"{coord_field} must be between -90 and 90")
+            if coord_field in attrs and attrs[coord_field] is not None:
+                if not -90 <= attrs[coord_field] <= 90:
+                    raise ValidationError(f"{coord_field} must be between -90 and 90")
         
         for coord_field in ['pickup_lng', 'dropoff_lng']:
-            if not -180 <= attrs[coord_field] <= 180:
-                raise ValidationError(f"{coord_field} must be between -180 and 180")
+            if coord_field in attrs and attrs[coord_field] is not None:
+                if not -180 <= attrs[coord_field] <= 180:
+                    raise ValidationError(f"{coord_field} must be between -180 and 180")
         
         return attrs
 

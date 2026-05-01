@@ -27,9 +27,10 @@ def cancel(task,user):
         )
         return
     # owner rule - can only cancel pending tasks
-    if task.status != 'PENDING':
-        raise ValueError("Only pending tasks can be cancelled")
-    
+    if task.status not in ['PENDING', 'ASSIGNED']:
+        raise ValueError("Only pending or assigned tasks can be cancelled")
+    previous_status = task.status
+
     task.cancel_task()
     task.save()
     
@@ -39,7 +40,7 @@ def cancel(task,user):
         actor=user,
         type='TASK_CANCELLED',
         metadata={
-            'previous_status': 'PENDING',
+            'previous_status': previous_status,
             'cancelled_by': 'owner',
             'reason': 'User cancelled their own task'
         }
