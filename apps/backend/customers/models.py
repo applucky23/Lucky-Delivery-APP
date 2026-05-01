@@ -167,6 +167,32 @@ class Task(models.Model):
         pass
 
 
+class TaskAssignment(models.Model):
+    OUTCOME_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('ACCEPTED', 'Accepted'),
+        ('REJECTED', 'Rejected'),
+        ('LOST', 'Lost'),
+        ('EXPIRED', 'Expired'),
+    ]
+
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='assignments')
+    driver = models.ForeignKey(DriverProfile, on_delete=models.CASCADE, related_name='assignments')
+    outcome = models.CharField(max_length=10, choices=OUTCOME_CHOICES, default='PENDING')
+    notified_at = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ('task', 'driver')
+        indexes = [
+            models.Index(fields=['task', 'outcome']),  # fast lookup for "all pending for this task"
+            models.Index(fields=['driver', 'outcome']), # fast lookup for "driver's active assignments"
+        ]
+
+    def __str__(self):
+        return f"Task #{self.task_id} → {self.driver} [{self.outcome}]"
+
+
 class DriverLocation(models.Model):
     driver = models.OneToOneField(DriverProfile, on_delete=models.CASCADE, related_name='location')
     latitude = models.DecimalField(max_digits=9, decimal_places=6)
@@ -246,7 +272,7 @@ class Notification(models.Model):
     TYPE_CHOICES = [
         ('TASK_ASSIGNED', 'Task Assigned'), ('PRICE_UPDATE', 'Price Update'),
         ('TASK_COMPLETED', 'Task Completed'), ('PAYMENT_REQUIRED', 'Payment Required'),
-        ('SYSTEM_ALERT', 'System Alert'),
+        ('SYSTEM_ALERT', 'System Alert'),('TASK_OFFER','Task Offer')
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')

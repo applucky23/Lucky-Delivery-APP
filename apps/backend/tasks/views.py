@@ -7,13 +7,13 @@ from django_filters.rest_framework import DjangoFilterBackend
 from customers.models import Task
 from .permissions import IsTaskOwnerOrAdminOrDriver,IsOwnerOrAdmin
 from .services.cancel_task import cancel
+from .services.task_assignment import dispatch
 from .services.task_validation import validate_user_can_create_task, validate_task_can_be_updated
 from .serializers import TaskSerializer, TaskDetailSerializer, AdminTaskSerializer
 
 
 # Create your views here.
 
-# TODO: Trigger notification (TASK_CREATED) via notifications app
 class TaskListCreateView(APIView):
     """Handle task creation and listing with role-based filtering"""
     permission_classes = [IsAuthenticated]
@@ -46,7 +46,6 @@ class TaskListCreateView(APIView):
 
     def post(self, request):
         """Create a new task with automatic user assignment"""
-        # TODO: EVENT -> TASK_CREATED (trigger driver matching + notifications later)
         user = request.user
         
         # Validate user can create task
@@ -66,6 +65,8 @@ class TaskListCreateView(APIView):
         
         if serializer.is_valid():
             task = serializer.save(user=request.user)
+            # TODO: EVENT -> TASK_CREATED (trigger driver matching + notifications later)
+            dispatch(task)
             
             # Return appropriate response based on user role
             if user.role == 'ADMIN':

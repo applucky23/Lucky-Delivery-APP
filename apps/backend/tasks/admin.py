@@ -7,7 +7,7 @@ from django.utils import timezone
 from rangefilter.filter import DateRangeFilter
 from import_export import resources
 from import_export.admin import ImportExportModelAdmin
-from customers.models import Task, TaskTransaction, TaskProof
+from customers.models import Task, TaskTransaction, TaskProof, TaskAssignment
 
 
 class TaskResource(resources.ModelResource):
@@ -291,6 +291,98 @@ class TaskTransactionAdmin(admin.ModelAdmin):
         return mark_safe('<span style="color: #999;">—</span>')
     task_link.short_description = 'Task'
     task_link.allow_tags = True
+
+
+class TaskAssignmentResource(resources.ModelResource):
+    class Meta:
+        model = TaskAssignment
+        fields = ('task', 'driver', 'outcome', 'notified_at', 'responded_at')
+
+
+@admin.register(TaskAssignment)
+class TaskAssignmentAdmin(ImportExportModelAdmin):
+    resource_class = TaskAssignmentResource
+    list_display = (
+        'task_link', 'driver_info', 'outcome_badge', 'notified_at', 
+        'responded_at', 'response_time'
+    )
+    list_filter = (
+        'outcome', ('notified_at', DateRangeFilter), 
+        ('responded_at', DateRangeFilter)
+    )
+    search_fields = (
+        'task__id', 'driver__user__username', 'driver__user__phone_number'
+    )
+    ordering = ('-notified_at',)
+    readonly_fields = ('notified_at',)
+    
+    fieldsets = (
+        ('Assignment Information', {
+            'fields': ('task', 'driver', 'outcome')
+        }),
+        ('Timestamps', {
+            'fields': ('notified_at', 'responded_at')
+        }),
+    )
+    
+    def task_link(self, obj):
+        if obj.task:
+            return format_html(
+                '<a href="/admin/customers/task/{}/change/">#{} - {}</a>',
+                obj.task.id, obj.task.id, obj.task.get_type_display()
+            )
+        return mark_safe('<span style="color: #999;">—</span>')
+    task_link.short_description = 'Task'
+    task_link.allow_tags = True
+    
+    def driver_info(self, obj):
+        if obj.driver:
+            status = '🟢' if obj.driver.is_online else '🔴'
+            return format_html(
+                '{} <strong>{}</strong><br><small style="color: #666;">{}</small>',
+                status, obj.driver.user.username, obj.driver.user.phone_number
+            )
+        return mark_safe('<span style="color: #999;">—</span>')
+    driver_info.short_description = 'Driver'
+    driver_info.allow_tags = True
+    
+    def outcome_badge(self, obj):
+        colors = {
+            'PENDING': '#ffc107',
+            'ACCEPTED': '#28a745',
+            'REJECTED': '#dc3545',
+            'LOST': '#6c757d',
+            'EXPIRED': '#fd7e14'
+        }
+        color = colors.get(obj.outcome, '#6c757d')
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 3px 8px; '
+            'border-radius: 12px; font-size: 11px; font-weight: bold;">{}</span>',
+            color, obj.get_outcome_display()
+        )
+    outcome_badge.short_description = 'Outcome'
+    outcome_badge.allow_tags = True
+    
+    def response_time(self, obj):
+        if obj.responded_at and obj.notified_at:
+            duration = obj.responded_at - obj.notified_at
+            minutes = duration.total_seconds() / 60
+            if minutes < 1:
+                return format_html('<small>{:.0f}s</small>', duration.total_seconds())
+            elif minutes < 60:
+                return format_html('<small>{:.1f}m</small>', minutes)
+            else:
+                hours = minutes / 60
+                return format_html('<small>{:.1f}h</small>', hours)
+        elif obj.outcome == 'PENDING':
+            return format_html('<small style="color: #ffc107;">Pending</small>')
+        return mark_safe('<span style="color: #999;">—</span>')
+    response_time.short_description = 'Response Time'
+    response_time.allow_tags = True
+    
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.select_related('task', 'driver__user')
 
 
 # Customize admin site headers
