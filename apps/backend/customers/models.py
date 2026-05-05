@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone
+from django_admin_geomap import GeoItem
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django_fsm import FSMField, transition
 import uuid
@@ -73,7 +74,7 @@ class DriverProfile(models.Model):
     is_available = models.BooleanField(default=False)
     is_verified = models.BooleanField(default=False)
     current_debt = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    debt_limit = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    debt_limit = models.DecimalField(max_digits=10, decimal_places=2, default=300)
     total_tasks = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     is_online = models.BooleanField(default=False)
@@ -193,7 +194,7 @@ class TaskAssignment(models.Model):
         return f"Task #{self.task_id} → {self.driver} [{self.outcome}]"
 
 
-class DriverLocation(models.Model):
+class DriverLocation(models.Model, GeoItem):
     driver = models.OneToOneField(DriverProfile, on_delete=models.CASCADE, related_name='location')
     latitude = models.DecimalField(max_digits=9, decimal_places=6)
     longitude = models.DecimalField(max_digits=9, decimal_places=6)
@@ -201,6 +202,20 @@ class DriverLocation(models.Model):
 
     def __str__(self):
         return f"Location of {self.driver}"
+
+    # These properties are REQUIRED by django_admin_geomap
+    @property
+    def geomap_longitude(self):
+        return str(self.longitude)
+
+    @property
+    def geomap_latitude(self):
+        return str(self.latitude)
+
+    # This shows the driver's name when you click the map pin
+    @property
+    def geomap_popup_view(self):
+        return f"<strong>Driver:</strong> {self.driver.user.username}"
 
 
 class TaskTransaction(models.Model):

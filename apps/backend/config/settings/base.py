@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'import_export',
     'rangefilter',
+    'django_admin_geomap',
     'customers',
     'tasks',
     'payments',

@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, DriverProfile, UserProfile
+from .models import User, DriverProfile, UserProfile, DriverLocation
+from django_admin_geomap import ModelAdmin as GeoModelAdmin
 
 
 @admin.register(User)
@@ -30,7 +31,7 @@ class UserAdmin(BaseUserAdmin):
 
 @admin.register(DriverProfile)
 class DriverProfileAdmin(admin.ModelAdmin):
-    list_display = ('user', 'is_available', 'is_verified', 'is_online', 'is_blocked', 'current_debt', 'total_tasks')
+    list_display = ('id','user', 'is_available', 'is_verified', 'is_online', 'is_blocked', 'current_debt', 'total_tasks')
     list_filter = ('is_available', 'is_verified', 'is_online', 'is_blocked', 'created_at')
     search_fields = ('user__phone_number', 'user__username')
     ordering = ('-created_at',)
@@ -76,3 +77,31 @@ class UserProfileAdmin(admin.ModelAdmin):
         if search_term:
             queryset |= self.model.objects.filter(user__email__icontains=search_term)
         return queryset, use_distinct
+
+
+@admin.register(DriverLocation)
+class DriverLocationAdmin(GeoModelAdmin):
+    # Standard Admin Settings
+    list_display = ('driver', 'latitude', 'longitude', 'updated_at')
+    list_filter = ('updated_at',)
+    search_fields = ('driver__user__phone_number', 'driver__user__username', 'driver__full_name')
+    ordering = ('-updated_at',)
+    readonly_fields = ('updated_at',)
+
+    fieldsets = (
+        ('Location Info', {'fields': ('driver', 'latitude', 'longitude')}),
+        ('Timestamps', {'fields': ('updated_at',)}),
+    )
+
+    # Geomap Configuration
+    geomap_show_map_on_list = True  # Shows map with markers for all rows
+    geomap_show_map_on_edit = True  # Shows map when editing a single driver
+    geomap_auto_center = True
+    geomap_default_zoom = 13
+
+    # Default center (Addis Ababa) if no markers exist
+    geomap_default_longitude = "38.7578"  # Must be a string
+    geomap_default_latitude = "9.0192"  # Must be a string
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('driver__user')

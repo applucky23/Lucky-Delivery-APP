@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 def haversine_distance(lat1, lon1, lat2, lon2):
+    # TODO: Replace haversine Python loop with PostGIS geo queries for production scaling
     """
     Calculate the great circle distance between two points 
     on earth (specified in decimal degrees)
