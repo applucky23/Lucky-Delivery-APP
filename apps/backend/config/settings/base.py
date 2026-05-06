@@ -35,6 +35,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'rest_framework_simplejwt',
+    'import_export',
+    'rangefilter',
     'customers',
     'tasks',
     'payments',
