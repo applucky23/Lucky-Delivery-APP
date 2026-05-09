@@ -68,24 +68,43 @@ class UserProfile(models.Model):
 
 
 class DriverProfile(models.Model):
+    VEHICLE_CHOICES = [
+        ('MOTORCYCLE', 'Motorcycle'),
+        ('BICYCLE', 'Bicycle'),
+        ('CAR', 'Car'),
+        ('MINI_TRUCK', 'Mini Truck'),
+        ('ON_FOOT', 'On Foot'),
+    ]
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending Review'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED', 'Rejected'),
+    ]
+
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='driver_profile')
-    full_name  = models.CharField(max_length=100)
-    is_available = models.BooleanField(default=False)
-    is_verified = models.BooleanField(default=False)
-    current_debt = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    debt_limit = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    total_tasks = models.PositiveIntegerField(default=0)
-    created_at = models.DateTimeField(auto_now_add=True)
-    is_online = models.BooleanField(default=False)
-    is_blocked = models.BooleanField(default=False)
+    full_name    = models.CharField(max_length=100)
+    area         = models.CharField(max_length=100, blank=True)
+    vehicle_type = models.CharField(max_length=20, choices=VEHICLE_CHOICES, blank=True)
+    status       = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
+    rejection_reason = models.TextField(blank=True)
+    id_image     = models.URLField(null=True, blank=True)
+    face_image   = models.URLField(null=True, blank=True)
     profile_image = models.URLField(null=True, blank=True)
-    id_image = models.URLField(null=True, blank=True)
+    is_available = models.BooleanField(default=False)
+    is_verified  = models.BooleanField(default=False)
+    current_debt = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    debt_limit   = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    total_tasks  = models.PositiveIntegerField(default=0)
+    created_at   = models.DateTimeField(auto_now_add=True)
+    is_online    = models.BooleanField(default=False)
+    is_blocked   = models.BooleanField(default=False)
 
     def __str__(self):
         return f"Driver: {self.user.username}"
 
     def save(self, *args, **kwargs):
-        self.is_blocked = self.current_debt >= self.debt_limit
+        self.is_blocked  = self.current_debt >= self.debt_limit
+        self.is_verified = self.status == 'APPROVED'
         super().save(*args, **kwargs)
 
 
