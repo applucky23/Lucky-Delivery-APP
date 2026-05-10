@@ -120,13 +120,13 @@ const styles = StyleSheet.create({
   },
   backArrow: {
     fontSize: 20,
-    color: '#006b2c',
+    color: '#22c55e',
     fontWeight: '700',
   },
   brandName: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#006b2c',
+    color: '#22c55e',
   },
   headerSpacer: {
     width: 40,
@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#006b2c',
+    color: '#22c55e',
     textTransform: 'uppercase',
     letterSpacing: 2,
     marginBottom: 8,
@@ -190,12 +190,12 @@ const styles = StyleSheet.create({
   },
   continueBtn: {
     height: 56,
-    backgroundColor: '#006b2c',
+    backgroundColor: '#22c55e',
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 4,
-    shadowColor: '#006b2c',
+    shadowColor: '#22c55e',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
     shadowRadius: 16,
@@ -215,7 +215,7 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     height: 4,
-    backgroundColor: '#006b2c',
+    backgroundColor: '#22c55e',
     width: '100%',
   },
 });

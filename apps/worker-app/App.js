@@ -6,6 +6,7 @@ import { getSession, getDriverProfile } from './src/services/driverService';
 import DriverLoginScreen from './src/screens/DriverLoginScreen';
 import DriverOtpScreen from './src/screens/DriverOtpScreen';
 import DriverSignupScreen from './src/screens/DriverSignupScreen';
+import DriverHomeScreen from './src/screens/DriverHomeScreen';
 import PendingApprovalScreen from './src/screens/PendingApprovalScreen';
 
 const Stack = createNativeStackNavigator();
@@ -51,6 +52,7 @@ export default function App() {
         <Stack.Screen name="DriverOtp"       component={DriverOtpScreen} />
         <Stack.Screen name="DriverSignup"    component={DriverSignupScreen} />
         <Stack.Screen name="PendingApproval" component={PendingApprovalScreen} />
+        <Stack.Screen name="DriverHome"      component={DriverHomeScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

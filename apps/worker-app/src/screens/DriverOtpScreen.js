@@ -13,7 +13,7 @@ export default function DriverOtpScreen({ navigation, route }) {
 
   const [otp, setOtp]             = useState(['', '', '', '', '', '']);
   const [loading, setLoading]     = useState(false);
-  const [countdown, setCountdown] = useState(60);
+  const [countdown, setCountdown] = useState(120);
   const inputs = [useRef(null), useRef(null), useRef(null), useRef(null), useRef(null), useRef(null)];
 
   useEffect(() => {
@@ -110,7 +110,7 @@ export default function DriverOtpScreen({ navigation, route }) {
 
   const handleResend = () => {
     setOtp(['', '', '', '', '', '']);
-    setCountdown(60);
+    setCountdown(120);
     inputs[0].current?.focus();
   };
 

@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     elevation: 2,
   },
-  brandName: { fontSize: 20, fontWeight: '800', color: '#006b2c' },
+  brandName: { fontSize: 20, fontWeight: '800', color: '#22c55e' },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
@@ -130,7 +130,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff', alignItems: 'center',
     justifyContent: 'center', elevation: 4, marginBottom: 24,
   },
-  logoIcon: { fontSize: 40, color: '#006b2c' },
+  logoIcon: { fontSize: 40, color: '#22c55e' },
   welcomeTitle: { fontSize: 30, fontWeight: '800', color: '#191c1e', marginBottom: 8 },
   welcomeSubtitle: { fontSize: 14, fontWeight: '600', color: '#3e4a3d' },
   formSection: { marginBottom: 16 },
@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
   divider: { width: 1, height: 28, backgroundColor: '#d0d8cf', marginRight: 12 },
   phoneInput: { flex: 1, fontSize: 18, fontWeight: '600', color: '#191c1e', letterSpacing: 2 },
   continueBtn: {
-    height: 56, backgroundColor: '#006b2c', borderRadius: 28,
+    height: 56, backgroundColor: '#22c55e', borderRadius: 28,
     alignItems: 'center', justifyContent: 'center',
     elevation: 4, marginTop: 8,
   },
@@ -159,5 +159,5 @@ const styles = StyleSheet.create({
   footerLink: { fontSize: 11, fontWeight: '700', color: '#6e7b6c', textTransform: 'uppercase', letterSpacing: 1, marginHorizontal: 8 },
   footerDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#bdcaba' },
   progressBar: { width: '100%', height: 4, backgroundColor: '#eceef0', borderRadius: 4, overflow: 'hidden' },
-  progressFill: { width: '33%', height: 4, backgroundColor: '#006b2c', borderRadius: 4 },
+  progressFill: { width: '33%', height: 4, backgroundColor: '#22c55e', borderRadius: 4 },
 });
