@@ -7,7 +7,7 @@ from django.utils import timezone
 from rangefilter.filter import DateRangeFilter
 from import_export import resources
 from import_export.admin import ImportExportModelAdmin
-from customers.models import Task, TaskTransaction, TaskProof
+from customers.models import Task, TaskTransaction, TaskProof, TaskAssignment, AdminAction
 
 
 class TaskResource(resources.ModelResource):
@@ -291,6 +291,111 @@ class TaskTransactionAdmin(admin.ModelAdmin):
         return mark_safe('<span style="color: #999;">—</span>')
     task_link.short_description = 'Task'
     task_link.allow_tags = True
+
+
+class TaskAssignmentResource(resources.ModelResource):
+    class Meta:
+        model = TaskAssignment
+        fields = ('task', 'driver', 'outcome', 'notified_at', 'responded_at')
+
+
+@admin.register(TaskAssignment)
+class TaskAssignmentAdmin(ImportExportModelAdmin):
+    resource_class = TaskAssignmentResource
+
+    # 'id' is the first field and the only one linked to the edit page
+    list_display = (
+        'id', 'task_link', 'driver', 'outcome_badge',
+        'notified_at', 'responded_at', 'response_time'
+    )
+
+    # Clicking the ID takes you to the TaskAssignment edit form
+    list_display_links = ('id',)
+
+    # We removed list_editable so changes can only be made inside the edit page
+
+    list_filter = (
+        'outcome',
+        ('notified_at', DateRangeFilter),
+        ('responded_at', DateRangeFilter)
+    )
+
+    search_fields = (
+        'id', 'task__id', 'driver__user__username', 'driver__user__phone_number'
+    )
+
+    ordering = ('-notified_at',)
+    readonly_fields = ('notified_at',)
+
+    fieldsets = (
+        ('Assignment Information', {
+            'fields': ('task', 'driver', 'outcome')
+        }),
+        ('Timestamps', {
+            'fields': ('notified_at', 'responded_at')
+        }),
+    )
+
+    def task_link(self, obj):
+        """Custom link to the Task detail page"""
+        if obj.task:
+            return format_html(
+                '<a href="/admin/customers/task/{}/change/">#{} - {}</a>',
+                obj.task.id, obj.task.id, obj.task.get_type_display()
+            )
+        return mark_safe('<span style="color: #999;">—</span>')
+
+    task_link.short_description = 'Task'
+
+    def outcome_badge(self, obj):
+        """Visual status indicator (Read-only in list view)"""
+        colors = {
+            'PENDING': '#ffc107',
+            'ACCEPTED': '#28a745',
+            'REJECTED': '#dc3545',
+            'LOST': '#6c757d',
+            'EXPIRED': '#fd7e14'
+        }
+        color = colors.get(obj.outcome, '#6c757d')
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 3px 10px; '
+            'border-radius: 12px; font-size: 11px; font-weight: bold;">{}</span>',
+            color, obj.get_outcome_display()
+        )
+
+    outcome_badge.short_description = 'Outcome'
+
+    def response_time(self, obj):
+        """Calculates response speed"""
+        if obj.responded_at and obj.notified_at:
+            duration = obj.responded_at - obj.notified_at
+            total_seconds = duration.total_seconds()
+
+            if total_seconds < 60:
+                return format_html('<small>{}s</small>', int(total_seconds))
+
+            minutes = total_seconds / 60
+            if minutes < 60:
+                return format_html('<small>{}m</small>', f"{minutes:.1f}")
+
+            return format_html('<small>{}h</small>', f"{(minutes / 60):.1f}")
+
+        elif obj.outcome == 'PENDING':
+            return mark_safe('<small style="color: #ffc107;">Waiting...</small>')
+        return mark_safe('<span style="color: #999;">—</span>')
+
+    response_time.short_description = 'Response Time'
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('task', 'driver__user')
+
+@admin.register(AdminAction)
+class AdminActionAdmin(admin.ModelAdmin):
+    list_display = ('admin', 'action_type', 'task', 'driver', 'created_at')
+    list_filter = ('action_type', 'created_at')
+    search_fields = ('admin__username', 'action_type', 'note', 'task__id')
+    ordering = ('-created_at',)
+    readonly_fields = ('created_at',)
 
 
 # Customize admin site headers

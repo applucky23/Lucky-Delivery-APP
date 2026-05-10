@@ -1,5 +1,5 @@
 from django.db import transaction
-from customers.models import TaskTransaction
+from customers.models import TaskTransaction,AdminAction,TaskAssignment
 
 # TODO: Trigger notification (TASK_CANCELLED) via notifications app
 @transaction.atomic
@@ -14,6 +14,16 @@ def cancel(task,user):
         task.cancel_task()
         task.save()
 
+        if task.driver:
+            task.driver.is_available = True
+            task.driver.save(update_fields=["is_available"])
+
+        # Make any pending assignment Lost
+        TaskAssignment.objects.filter(
+            task=task,
+            outcome='PENDING'
+        ).update(outcome='LOST')
+
         # Create transaction record for admin override
         TaskTransaction.objects.create(
             task=task,
@@ -25,6 +35,13 @@ def cancel(task,user):
                 'reason': 'Admin cancelled task'
             }
         )
+        AdminAction.objects.create(
+            admin=user,
+            task=task,
+            driver=task.driver,
+            action_type='CANCEL_TASK',
+            note=f'Admin cancelled task {task.id}',
+        )
         return
     # owner rule - can only cancel pending tasks
     if task.status not in ['PENDING', 'ASSIGNED']:
@@ -33,7 +50,16 @@ def cancel(task,user):
 
     task.cancel_task()
     task.save()
-    
+    if task.driver:
+        task.driver.is_available = True
+        task.driver.save(update_fields=["is_available"])
+
+    # Make any pending assignment Lost
+    TaskAssignment.objects.filter(
+        task=task,
+        outcome='PENDING'
+    ).update(outcome='LOST')
+
     # Create transaction record for user cancellation
     TaskTransaction.objects.create(
         task=task,

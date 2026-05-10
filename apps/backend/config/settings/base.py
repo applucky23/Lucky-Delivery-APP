@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'import_export',
     'rangefilter',
     'django_filters',
+    'django_admin_geomap',
     'customers',
     'tasks',
     'payments',
