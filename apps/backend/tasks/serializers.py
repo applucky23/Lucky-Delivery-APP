@@ -1,6 +1,6 @@
 from rest_framework.serializers import ModelSerializer, ValidationError
 from rest_framework import serializers
-from customers.models import Task
+from customers.models import Task, TaskAssignment
 
 
 class TaskSerializer(ModelSerializer):
@@ -72,3 +72,12 @@ class AdminTaskSerializer(TaskDetailSerializer):
         fields = '__all__'
         read_only_fields = ('id', 'created_at')
 
+
+
+class TaskAssignmentSerializer(serializers.ModelSerializer):
+    """Serializer for driver assignment cards — includes nested task details"""
+    task = TaskDetailSerializer(read_only=True)
+
+    class Meta:
+        model = TaskAssignment
+        fields = ['id', 'task', 'outcome', 'notified_at']

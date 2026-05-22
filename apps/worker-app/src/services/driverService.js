@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient';
 
-const DJANGO_URL = 'http://192.168.0.196:8000/api/v1';
+const DJANGO_URL = 'https://a303-196-189-145-165.ngrok-free.app/api/v1';
 
 // ── Network check helper ──────────────────────────────────────────────────────
 const checkNetwork = async () => {
@@ -27,6 +27,7 @@ export const verifyOTP = async (phone, token) => {
 };
 
 export const getToken = async () => {
+  // Try in-memory session first (fastest, no SecureStore read delay)
   const { data } = await supabase.auth.getSession();
   return data?.session?.access_token ?? null;
 };
@@ -42,10 +43,11 @@ export const signOut = async () => {
 
 // ── Django API ────────────────────────────────────────────────────────────────
 
-const apiCall = async (method, path, body = null) => {
+// Accepts an optional token to use directly (avoids SecureStore read race after OTP verify)
+const apiCall = async (method, path, body = null, directToken = null) => {
   await checkNetwork();
 
-  const token = await getToken();
+  const token = directToken ?? await getToken();
   if (!token) throw new Error('Session expired. Please log in again.');
 
   let res;
@@ -55,6 +57,8 @@ const apiCall = async (method, path, body = null) => {
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': '1',
+        'User-Agent': 'LuckyApp/1.0',
       },
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -68,11 +72,30 @@ const apiCall = async (method, path, body = null) => {
     throw new Error('Session expired. Please log in again.');
   }
 
-  return res.json();
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    console.error('[apiCall] Non-JSON response:', res.status, text.slice(0, 200));
+    throw new Error(`Server error (${res.status}). Please try again.`);
+  }
 };
 
-export const registerDriver  = (data)  => apiCall('POST', '/driver/register/', data);
-export const getDriverProfile = ()     => apiCall('GET',  '/driver/profile/');
+export const registerDriver   = (data, token)  => apiCall('POST', '/driver/register/', data, token);
+export const getDriverProfile = (token = null) => apiCall('GET',  '/driver/profile/', null, token);
+
+// ── Task API ──────────────────────────────────────────────────────────────────
+
+export const getDriverAssignments = () => apiCall('GET', '/tasks/driver/assignments/');
+export const acceptTask           = (taskId) => apiCall('POST', `/tasks/${taskId}/accept/`);
+export const rejectTask           = (taskId) => apiCall('POST', `/tasks/${taskId}/reject/`);
+export const getTaskDetail        = (taskId) => apiCall('GET',  `/tasks/${taskId}/`);
+export const getActiveTask        = () => apiCall('GET', '/tasks/driver/active/');
+export const updateDriverProfile  = (data)   => apiCall('PATCH', '/driver/profile/update/', data);
+
+// ── Task status transitions ───────────────────────────────────────────────────
+export const updateTaskStatus = (taskId, data) => apiCall('PATCH', `/tasks/${taskId}/update/`, data);
+export const transitionTask   = (taskId, action) => apiCall('POST', `/tasks/${taskId}/transition/`, { action });
 
 // ── Supabase Storage image upload ─────────────────────────────────────────────
 

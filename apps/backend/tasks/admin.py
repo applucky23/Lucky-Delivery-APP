@@ -2,12 +2,15 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.db.models import Count, Avg, Sum
 from django.utils.safestring import mark_safe
-from django.urls import reverse
+from django.urls import reverse, path
 from django.utils import timezone
+from django.http import HttpResponseRedirect
+from django.contrib import messages
 from rangefilter.filter import DateRangeFilter
 from import_export import resources
 from import_export.admin import ImportExportModelAdmin
-from customers.models import Task, TaskTransaction, TaskProof, TaskAssignment, AdminAction
+from customers.models import Task, TaskTransaction, TaskProof, TaskAssignment, AdminAction, DriverProfile
+from tasks.services.manual_assignments import manual_assign
 
 
 class TaskResource(resources.ModelResource):
@@ -128,7 +131,7 @@ class TaskAdmin(ImportExportModelAdmin):
         if obj.completed_at and obj.created_at:
             duration = obj.completed_at - obj.created_at
             hours = duration.total_seconds() / 3600
-            return format_html('<small>{:.1f}h</small>', hours)
+            return format_html('<small>{}h</small>', f'{hours:.1f}')
         return mark_safe('<span style="color: #999;">—</span>')
     completion_time.short_description = 'Duration'
     completion_time.allow_tags = True
@@ -148,6 +151,60 @@ class TaskAdmin(ImportExportModelAdmin):
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         return qs.select_related('user', 'driver__user')
+
+    def save_model(self, request, obj, form, change):
+        """When admin sets/changes the driver field, create a TaskAssignment record."""
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # Capture pre-save state
+        prev_driver_id = None
+        prev_status = None
+        if change:
+            try:
+                prev = Task.objects.get(pk=obj.pk)
+                prev_driver_id = prev.driver_id
+                prev_status = prev.status
+            except Task.DoesNotExist:
+                pass
+
+        super().save_model(request, obj, form, change)
+
+        logger.info(f'[AdminSave] task#{obj.id} prev_driver={prev_driver_id} new_driver={obj.driver_id} prev_status={prev_status} new_status={obj.status} changed={form.changed_data}')
+
+        # Create assignment whenever driver is set/changed, regardless of status
+        driver_changed = obj.driver_id and obj.driver_id != prev_driver_id
+        if driver_changed:
+            # manual_assign requires PENDING status — create assignment directly if task is already past PENDING
+            from customers.models import TaskAssignment
+            from django.utils import timezone
+
+            if obj.status == 'PENDING':
+                result = manual_assign(obj, obj.driver, admin=request.user)
+                logger.info(f'[AdminSave] manual_assign result: {result}')
+                if result['success']:
+                    messages.success(request, f"✓ TaskAssignment created — driver {obj.driver.full_name} will see this task.")
+                else:
+                    messages.warning(request, f"Driver set but: {result['message']}")
+            else:
+                # Task already past PENDING — create assignment directly
+                assignment, created = TaskAssignment.objects.get_or_create(
+                    task=obj,
+                    driver=obj.driver,
+                    defaults={'outcome': 'PENDING'}
+                )
+                if created:
+                    messages.success(request, f"✓ TaskAssignment created — driver {obj.driver.full_name} will see this task.")
+                    logger.info(f'[AdminSave] Direct assignment created id={assignment.id}')
+                else:
+                    # Already exists — make sure it's PENDING so driver can see it
+                    if assignment.outcome not in ('PENDING', 'ACCEPTED'):
+                        assignment.outcome = 'PENDING'
+                        assignment.responded_at = None
+                        assignment.save()
+                        messages.success(request, f"✓ Assignment reset to PENDING for {obj.driver.full_name}.")
+                    else:
+                        messages.info(request, f"Assignment already exists with outcome={assignment.outcome}.")
 
 
 class TaskProofResource(resources.ModelResource):

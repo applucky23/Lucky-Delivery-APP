@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework import status
 from .models import UserProfile, DriverProfile
-from .serializers import UserProfileSerializer, DriverRegistrationSerializer, DriverProfileSerializer
+from .serializers import UserProfileSerializer, DriverRegistrationSerializer, DriverProfileSerializer, DriverProfileUpdateSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -146,3 +146,23 @@ class DriverProfileView(APIView):
                 {'error': 'Driver profile not found. Please complete registration.'},
                 status=status.HTTP_404_NOT_FOUND
             )
+
+
+class DriverProfileUpdateView(APIView):
+    """
+    PATCH /api/v1/driver/profile/update/
+    Driver updates their own editable profile fields.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request):
+        try:
+            profile = request.user.driver_profile
+        except DriverProfile.DoesNotExist:
+            return Response({'error': 'Driver profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = DriverProfileUpdateSerializer(profile, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(DriverProfileSerializer(profile).data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

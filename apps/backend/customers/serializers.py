@@ -103,3 +103,11 @@ class DriverProfileSerializer(serializers.ModelSerializer):
             'total_tasks', 'created_at',
         ]
         read_only_fields = fields
+
+
+class DriverProfileUpdateSerializer(serializers.ModelSerializer):
+    """Writable serializer — only safe fields the driver can update themselves."""
+    class Meta:
+        from .models import DriverProfile
+        model  = DriverProfile
+        fields = ['full_name', 'area', 'vehicle_type', 'profile_image', 'is_available', 'is_online']

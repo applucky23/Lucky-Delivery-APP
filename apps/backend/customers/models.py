@@ -142,6 +142,7 @@ class Task(models.Model):
     waiting_ended_at = models.DateTimeField(null=True, blank=True)
 
     is_price_confirmed = models.BooleanField(default=False)
+    is_return_trip     = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)

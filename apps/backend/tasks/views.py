@@ -5,14 +5,14 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework import status, serializers
 from django_filters.rest_framework import DjangoFilterBackend
 from django.core.exceptions import ValidationError
-from customers.models import Task,DriverProfile
+from customers.models import Task, DriverProfile, TaskAssignment
 from .permissions import IsTaskOwnerOrAdminOrDriver,IsOwnerOrAdmin,IsDriver,IsAdminUser
 from .services.cancel_task import cancel
 from .services.task_assignment import dispatch
 from .services.task_accept_reject import accept_task,reject_task
 from .services.manual_assignments import manual_assign
 from .services.task_validation import validate_user_can_create_task, validate_task_can_be_updated
-from .serializers import TaskSerializer, TaskDetailSerializer, AdminTaskSerializer
+from .serializers import TaskSerializer, TaskDetailSerializer, AdminTaskSerializer, TaskAssignmentSerializer
 
 
 # Create your views here.
@@ -279,3 +279,148 @@ class ManualAssignTaskAPIView(APIView):
                 {'error': 'An unexpected error occurred while assigning the task'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class DriverAssignmentsView(APIView):
+    """
+    GET /api/v1/tasks/driver/assignments/
+    Returns all PENDING task assignments for the authenticated driver.
+    """
+    permission_classes = [IsAuthenticated, IsDriver]
+
+    def get(self, request):
+        try:
+            driver_profile = request.user.driver_profile
+        except DriverProfile.DoesNotExist:
+            return Response({'error': 'Driver profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f'[Assignments] driver_id={driver_profile.id} name={driver_profile.full_name} user_role={request.user.role}')
+
+        all_assignments = TaskAssignment.objects.filter(driver=driver_profile)
+        logger.info(f'[Assignments] total for driver: {all_assignments.count()} | pending: {all_assignments.filter(outcome="PENDING").count()}')
+        for a in all_assignments:
+            logger.info(f'[Assignments]   id={a.id} task#{a.task_id} outcome={a.outcome}')
+
+        assignments = (
+            TaskAssignment.objects
+            .filter(driver=driver_profile, outcome='PENDING')
+            .select_related('task', 'task__user')
+            .order_by('-notified_at')
+        )
+        serializer = TaskAssignmentSerializer(assignments, many=True)
+        return Response(serializer.data)
+
+
+class DriverActiveTaskView(APIView):
+    """
+    GET /api/v1/tasks/driver/active/
+    Returns the driver's current active task (ASSIGNED, ARRIVED, etc.)
+    """
+    permission_classes = [IsAuthenticated, IsDriver]
+
+    def get(self, request):
+        try:
+            driver_profile = request.user.driver_profile
+        except DriverProfile.DoesNotExist:
+            return Response({'error': 'Driver profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        active_task = Task.objects.filter(
+            driver=driver_profile,
+            status__in=['ASSIGNED', 'ARRIVED', 'AWAITING_APPROVAL', 'PURCHASED', 'DELIVERING']
+        ).select_related('user').order_by('-created_at').first()
+
+        if not active_task:
+            return Response({'error': 'No active task'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(TaskDetailSerializer(active_task).data)
+
+
+class TaskTransitionView(APIView):
+    """
+    POST /api/v1/tasks/{task_id}/transition/
+    Driver advances the task through FSM states.
+    Body: { "action": "mark_arrived" | "request_approval" | "start_delivery" | "complete_task" }
+    """
+    permission_classes = [IsAuthenticated, IsDriver]
+
+    ALLOWED_TRANSITIONS = {
+        'mark_arrived':      'ASSIGNED',
+        'request_approval':  'ARRIVED',
+        'start_delivery':    'PURCHASED',
+        'complete_task':     'DELIVERING',
+    }
+
+    def post(self, request, task_id):
+        from django.db import transaction
+
+        action = request.data.get('action')
+        if action not in self.ALLOWED_TRANSITIONS:
+            return Response(
+                {'error': f'Invalid action. Must be one of: {list(self.ALLOWED_TRANSITIONS.keys())}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            driver_profile = request.user.driver_profile
+        except DriverProfile.DoesNotExist:
+            return Response({'error': 'Driver profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            with transaction.atomic():
+                task = Task.objects.select_for_update().get(id=task_id, driver=driver_profile)
+
+                required_status = self.ALLOWED_TRANSITIONS[action]
+                if task.status != required_status:
+                    return Response(
+                        {'error': f'Cannot perform "{action}" — task is {task.status}, expected {required_status}'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                getattr(task, action)()
+                task.save()
+
+                if action == 'complete_task':
+                    driver_profile.is_available = True
+                    driver_profile.save(update_fields=['is_available'])
+
+            return Response(TaskDetailSerializer(task).data, status=status.HTTP_200_OK)
+
+        except Task.DoesNotExist:
+            return Response({'error': 'Task not found or not assigned to you'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ApprovePurchaseView(APIView):
+    """
+    POST /api/v1/tasks/{task_id}/approve/
+    Customer approves the purchase price so driver can start delivery.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, task_id):
+        from django.db import transaction
+
+        try:
+            with transaction.atomic():
+                task = Task.objects.select_for_update().get(id=task_id, user=request.user)
+
+                if task.status != 'AWAITING_APPROVAL':
+                    return Response(
+                        {'error': f'Task is {task.status}, not awaiting approval'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                task.approve_purchase()
+                task.save()
+
+            return Response(TaskDetailSerializer(task).data)
+
+        except Task.DoesNotExist:
+            return Response({'error': 'Task not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f'[Approve] error: {e}')
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

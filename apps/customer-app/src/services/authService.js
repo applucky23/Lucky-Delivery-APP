@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabaseClient';
 
-const DJANGO_URL = 'http://192.168.0.196:8000/api/v1';
+const DJANGO_URL = 'https://a303-196-189-145-165.ngrok-free.app/api/v1';
 
 // ── Supabase Phone OTP (via AfroMessage hook) ─────────────────────────────────
 
@@ -72,7 +72,30 @@ export const apiGet = async (path) => {
       'User-Agent': 'LuckyApp/1.0',
     },
   });
-  return res.json();
+  const text = await res.text();
+  try { return JSON.parse(text); } catch {
+    console.warn(`[API] Non-JSON from ${path}:`, res.status, text.slice(0, 100));
+    throw new Error(`Server error (${res.status})`);
+  }
+};
+
+export const apiPost = async (path, body) => {
+  const token = await getToken();
+  const res = await fetch(`${DJANGO_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': '1',
+      'User-Agent': 'LuckyApp/1.0',
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  try { return JSON.parse(text); } catch {
+    console.warn(`[API] Non-JSON from ${path}:`, res.status, text.slice(0, 100));
+    throw new Error(`Server error (${res.status})`);
+  }
 };
 
 export const apiPut = async (path, body) => {
@@ -87,7 +110,11 @@ export const apiPut = async (path, body) => {
     },
     body: JSON.stringify(body),
   });
-  return res.json();
+  const text = await res.text();
+  try { return JSON.parse(text); } catch {
+    console.warn(`[API] Non-JSON from ${path}:`, res.status, text.slice(0, 100));
+    throw new Error(`Server error (${res.status})`);
+  }
 };
 
 // ── Profile helpers ───────────────────────────────────────────────────────────
@@ -107,3 +134,10 @@ export const getCachedProfile = async () => {
 };
 
 export const updateProfile = (data) => apiPut('/profile/', data);
+
+// ── Task helpers ──────────────────────────────────────────────────────────────
+
+export const getTasks     = ()         => apiGet('/tasks/');
+export const getTask      = (id)       => apiGet(`/tasks/${id}/`);
+export const cancelTask   = (id)       => apiPost(`/tasks/${id}/cancel/`, {});
+export const approveTask  = (id)       => apiPost(`/tasks/${id}/approve/`, {});

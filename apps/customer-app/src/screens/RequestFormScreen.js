@@ -1,10 +1,15 @@
 import React, { useState } from 'react';
 import {
   View, Text, ScrollView, TextInput, TouchableOpacity,
-  StyleSheet, StatusBar, Alert,
+  StyleSheet, StatusBar, Alert, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
+import { apiPost } from '../services/authService';
+
+// Addis Ababa center coordinates (placeholder until real map integration)
+const ADDIS_LAT = 9.0192;
+const ADDIS_LNG = 38.7578;
 
 // ─── Reusable: Step Header ────────────────────────────────────────────────────
 const StepHeader = ({ title, subtitle, current, total }) => (
@@ -279,8 +284,27 @@ const RequestFormScreen = ({ route, navigation }) => {
 
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({});
+  const [submitting, setSubmitting] = useState(false);
 
   const set = (key, value) => setFormData((prev) => ({ ...prev, [key]: value }));
+
+  // Map service type to Django task type
+  const TYPE_MAP = { buy: 'SHOPPING', pickup: 'DELIVERY', errand: 'ERRAND' };
+
+  // Build a human-readable note from form data
+  const buildNote = () => {
+    const parts = [];
+    if (formData.category)        parts.push(`Category: ${formData.category}`);
+    if (formData.description)     parts.push(formData.description);
+    if (formData.whereToBuy)      parts.push(`Buy from: ${formData.whereToBuy}`);
+    if (formData.deliveryLocation) parts.push(`Deliver to: ${formData.deliveryLocation}`);
+    if (formData.pickupLocation)  parts.push(`Pickup: ${formData.pickupLocation}`);
+    if (formData.dropoffLocation) parts.push(`Dropoff: ${formData.dropoffLocation}`);
+    if (formData.errandLocation)  parts.push(`Location: ${formData.errandLocation}`);
+    if (formData.taskType)        parts.push(`Task: ${formData.taskType}`);
+    if (formData.priority)        parts.push(`Priority: ${formData.priority}`);
+    return parts.join(' | ');
+  };
 
   const handleNext = () => {
     if (!config.validate(step, formData)) {
@@ -295,15 +319,34 @@ const RequestFormScreen = ({ route, navigation }) => {
     else setStep((s) => s - 1);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!config.validate(step, formData)) {
       Alert.alert('Required', 'Please fill in all required fields.');
       return;
     }
-    console.log('📦 Form submitted:', { serviceType, ...formData });
-    Alert.alert('Request Submitted!', 'We\'ll find you a worker right away.', [
-      { text: 'OK', onPress: () => navigation.navigate('Home') },
-    ]);
+    setSubmitting(true);
+    try {
+      const payload = {
+        type:        TYPE_MAP[serviceType],
+        pickup_lat:  ADDIS_LAT,
+        pickup_lng:  ADDIS_LNG,
+        dropoff_lat: ADDIS_LAT + 0.01,
+        dropoff_lng: ADDIS_LNG + 0.01,
+        note:        buildNote(),
+      };
+      const result = await apiPost('/tasks/', payload);
+      if (result?.id) {
+        Alert.alert('Request Submitted!', "We'll find you a worker right away.", [
+          { text: 'OK', onPress: () => navigation.navigate('TaskList') },
+        ]);
+      } else {
+        Alert.alert('Error', result?.error || 'Failed to submit request. Please try again.');
+      }
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Network error. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const renderStep = () => {
@@ -366,9 +409,14 @@ const RequestFormScreen = ({ route, navigation }) => {
             <MaterialIcons name="arrow-forward" size={18} color="white" style={{ marginLeft: 6 }} />
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={s.btnPrimary} onPress={handleSubmit} activeOpacity={0.8}>
-            <MaterialIcons name="check-circle" size={18} color="white" style={{ marginRight: 6 }} />
-            <Text style={s.btnPrimaryText}>Submit</Text>
+          <TouchableOpacity style={s.btnPrimary} onPress={handleSubmit} activeOpacity={0.8} disabled={submitting}>
+            {submitting
+              ? <ActivityIndicator color="white" />
+              : <>
+                  <MaterialIcons name="check-circle" size={18} color="white" style={{ marginRight: 6 }} />
+                  <Text style={s.btnPrimaryText}>Submit</Text>
+                </>
+            }
           </TouchableOpacity>
         )}
       </View>

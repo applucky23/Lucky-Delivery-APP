@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, StatusBar, ScrollView, ActivityIndicator,
-  SafeAreaView, Alert,
+  StyleSheet, StatusBar, ScrollView, ActivityIndicator, Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { verifyOTP, registerDriver, getDriverProfile, uploadImage } from '../services/driverService';
 
@@ -39,8 +39,14 @@ export default function DriverOtpScreen({ navigation, route }) {
     if (code.length !== 6) return;
     setLoading(true);
     try {
-      // Step 1: verify OTP with Supabase → get JWT
-      await verifyOTP(phone, code);
+      // Step 1: verify OTP — session is returned directly, no SecureStore read needed
+      const authData = await verifyOTP(phone, code);
+      const token = authData?.session?.access_token ?? null;
+
+      if (!token) {
+        Alert.alert('Error', 'Could not establish session. Please try again.');
+        return;
+      }
 
       if (signupData) {
         // SIGNUP FLOW: upload images first (now authenticated), then register
@@ -54,7 +60,6 @@ export default function DriverOtpScreen({ navigation, route }) {
           }
         } catch (uploadErr) {
           console.warn('[Upload] ID image failed:', uploadErr.message);
-          // Continue without image — admin can request later
         }
 
         try {
@@ -65,8 +70,6 @@ export default function DriverOtpScreen({ navigation, route }) {
           console.warn('[Upload] Face image failed:', uploadErr.message);
         }
 
-        console.log('[Register] id_image:', id_image, 'face_image:', face_image);
-
         const result = await registerDriver({
           full_name:    signupData.full_name,
           area:         signupData.area,
@@ -74,9 +77,7 @@ export default function DriverOtpScreen({ navigation, route }) {
           email:        signupData.email,
           id_image,
           face_image,
-        });
-
-        console.log('[Register] result:', JSON.stringify(result));
+        }, token);
 
         if (result?.driver) {
           navigation.reset({ index: 0, routes: [{ name: 'PendingApproval' }] });
@@ -84,10 +85,9 @@ export default function DriverOtpScreen({ navigation, route }) {
           Alert.alert('Error', result?.error || 'Registration failed. Please try again.');
         }
       } else {
-        // LOGIN FLOW: check if driver has a profile and is approved
-        const profile = await getDriverProfile();
+        // LOGIN FLOW: pass token directly — no SecureStore race condition
+        const profile = await getDriverProfile(token);
         if (profile?.error) {
-          // No profile found — not registered as driver
           Alert.alert(
             'Not Registered',
             'No driver account found for this number. Please sign up first.',
@@ -102,7 +102,7 @@ export default function DriverOtpScreen({ navigation, route }) {
         }
       }
     } catch (err) {
-      Alert.alert('Invalid OTP', err.message);
+      Alert.alert('Error', err.message);
     } finally {
       setLoading(false);
     }
