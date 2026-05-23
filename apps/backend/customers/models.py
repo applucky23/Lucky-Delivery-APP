@@ -124,6 +124,8 @@ class Task(models.Model):
 
     is_price_confirmed = models.BooleanField(default=False)
 
+    is_return_trip = models.BooleanField(default=False)
+
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 
@@ -155,11 +157,11 @@ class Task(models.Model):
     def approve_purchase(self):
         self.is_price_confirmed = True
 
-    @transition(field=status, source='PURCHASED', target='DELIVERING')
+    @transition(field=status, source=['PURCHASED','ARRIVED'], target='DELIVERING')
     def start_delivery(self):
         pass
 
-    @transition(field=status, source='DELIVERING', target='COMPLETED')
+    @transition(field=status, source=['DELIVERING', 'PURCHASED'], target='COMPLETED')
     def complete_task(self):
         self.completed_at = timezone.now()
 
@@ -255,7 +257,7 @@ class TaskProof(models.Model):
     TYPE_CHOICES = [('RECEIPT', 'Receipt'), ('SMS', 'SMS')]
 
     task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='proofs')
-    image_url = models.URLField()
+    image_url = models.URLField(max_length=2000)
     type = models.CharField(max_length=10, choices=TYPE_CHOICES)
     extracted_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     driver_reported_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)

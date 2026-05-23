@@ -20,6 +20,7 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 AUTH_USER_MODEL = 'customers.User'
 
 # Supabase configuration
+SUPABASE_STORAGE_HOST = os.getenv('SUPABASE_STORAGE_HOST')
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_ANON_KEY = os.getenv('SUPABASE_ANON_KEY')
 SUPABASE_JWT_SECRET = os.getenv('SUPABASE_JWT_SECRET')

@@ -128,7 +128,7 @@ class TaskAdmin(ImportExportModelAdmin):
         if obj.completed_at and obj.created_at:
             duration = obj.completed_at - obj.created_at
             hours = duration.total_seconds() / 3600
-            return format_html('<small>{:.1f}h</small>', hours)
+            return format_html('<small>{}h</small>', round(hours, 1))
         return mark_safe('<span style="color: #999;">—</span>')
     completion_time.short_description = 'Duration'
     completion_time.allow_tags = True
@@ -160,8 +160,8 @@ class TaskProofResource(resources.ModelResource):
 class TaskProofAdmin(ImportExportModelAdmin):
     resource_class = TaskProofResource
     list_display = (
-        'task_link', 'proof_type_badge', 'amount_comparison',
-        'verification_status', 'created_at', 'preview_image'
+        'id','task_link', 'proof_type_badge', 'amount_comparison',
+        'verification_status', 'created_at', 'preview_image','is_flagged'
     )
     list_filter = ('type', 'is_flagged', 'verified', ('created_at', DateRangeFilter))
     search_fields = ('task__id', 'task__user__username', 'task__driver__user__username')
@@ -376,9 +376,9 @@ class TaskAssignmentAdmin(ImportExportModelAdmin):
 
             minutes = total_seconds / 60
             if minutes < 60:
-                return format_html('<small>{}m</small>', f"{minutes:.1f}")
+                return format_html('<small>{}m</small>', round(minutes, 1))
 
-            return format_html('<small>{}h</small>', f"{(minutes / 60):.1f}")
+            return format_html('<small>{}h</small>', round(minutes / 60, 1))
 
         elif obj.outcome == 'PENDING':
             return mark_safe('<small style="color: #ffc107;">Waiting...</small>')
