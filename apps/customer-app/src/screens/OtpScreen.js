@@ -48,9 +48,14 @@ export default function OtpScreen({ navigation, route }) {
     setLoading(true);
     try {
       await verifyOTP(phone, code);
-      // Immediately sync user to Django DB — makes user visible in admin
-      await getProfile().catch(() => {});
-      navigation.navigate('PersonalDetail');
+      // Immediately sync user to Django DB
+      const profile = await getProfile().catch(() => null);
+      // If profile has a name → returning user, skip PersonalDetail
+      if (profile?.name) {
+        navigation.navigate('Home', { name: profile.name });
+      } else {
+        navigation.navigate('PersonalDetail');
+      }
     } catch (err) {
       Alert.alert('Invalid OTP', err.message);
     } finally {
@@ -108,7 +113,7 @@ export default function OtpScreen({ navigation, route }) {
           <Text style={styles.title}>Verify Code</Text>
           <Text style={styles.subtitle}>
             Enter the code sent to your phone{' '}
-            <Text style={styles.phoneHighlight}>+251 {phone}</Text>
+            <Text style={styles.phoneHighlight}>{phone}</Text>
           </Text>
         </View>
 
@@ -193,13 +198,13 @@ const styles = StyleSheet.create({
   },
   backArrow: {
     fontSize: 20,
-    color: '#006b2c',
+    color: '#22c55e',
     fontWeight: '700',
   },
   brandName: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#006b2c',
+    color: '#22c55e',
   },
   headerSpacer: {
     width: 40,
@@ -286,7 +291,7 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   otpInputFilled: {
-    borderColor: '#006b2c',
+    borderColor: '#22c55e',
   },
   resendSection: {
     alignItems: 'center',
@@ -301,18 +306,18 @@ const styles = StyleSheet.create({
   resendBtn: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#006b2c',
+    color: '#22c55e',
     opacity: 0.5,
   },
   confirmBtn: {
     width: '100%',
     height: 56,
-    backgroundColor: '#006b2c',
+    backgroundColor: '#22c55e',
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 4,
-    shadowColor: '#006b2c',
+    shadowColor: '#22c55e',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
     shadowRadius: 16,

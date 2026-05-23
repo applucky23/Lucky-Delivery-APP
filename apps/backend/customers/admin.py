@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.utils.html import format_html
 from .models import User, DriverProfile, UserProfile, DriverLocation
 from django_admin_geomap import ModelAdmin as GeoModelAdmin
 
@@ -31,25 +32,49 @@ class UserAdmin(BaseUserAdmin):
 
 @admin.register(DriverProfile)
 class DriverProfileAdmin(admin.ModelAdmin):
-    list_display = ('id','user', 'is_available', 'is_verified', 'is_online', 'is_blocked', 'current_debt', 'total_tasks')
-    list_filter = ('is_available', 'is_verified', 'is_online', 'is_blocked', 'created_at')
-    search_fields = ('user__phone_number', 'user__username')
+    list_display = ('id', 'user', 'full_name', 'area', 'vehicle_type', 'status', 'is_available', 'is_verified', 'is_online', 'is_blocked', 'total_tasks')
+    list_filter = ('status', 'is_available', 'is_verified', 'is_online', 'is_blocked', 'vehicle_type', 'created_at')
+    search_fields = ('user__phone_number', 'user__username', 'full_name', 'area')
     ordering = ('-created_at',)
-    
+
     fieldsets = (
-        ('Driver Info', {'fields': ('user', 'is_available', 'is_verified', 'is_online')}),
+        ('Driver Info', {'fields': ('user', 'full_name', 'area', 'vehicle_type', 'status', 'rejection_reason', 'is_available', 'is_verified', 'is_online')}),
         ('Contact', {'fields': ('email',)}),
         ('Financial', {'fields': ('current_debt', 'debt_limit', 'is_blocked')}),
         ('Stats', {'fields': ('total_tasks',)}),
-        ('Documents', {'fields': ('profile_image', 'id_image')}),
+        ('Documents & Verification', {'fields': ('id_image_preview', 'face_image_preview', 'profile_image')}),
         ('Dates', {'fields': ('created_at',)}),
     )
-    
-    readonly_fields = ('email','created_at', 'is_blocked')
-    
+
+    readonly_fields = ('email', 'created_at', 'is_blocked', 'id_image_preview', 'face_image_preview')
+
     def email(self, obj):
         return obj.user.email
     email.short_description = 'Email'
+
+    def id_image_preview(self, obj):
+        if obj.id_image:
+            return format_html(
+                '<a href="{url}" target="_blank">'
+                '<img src="{url}" style="max-width:300px; max-height:200px; '
+                'border-radius:8px; border:1px solid #ddd;"/>'
+                '</a><br><small style="color:#666;">{url}</small>',
+                url=obj.id_image
+            )
+        return '—'
+    id_image_preview.short_description = 'ID Card'
+
+    def face_image_preview(self, obj):
+        if obj.face_image:
+            return format_html(
+                '<a href="{url}" target="_blank">'
+                '<img src="{url}" style="max-width:200px; max-height:200px; '
+                'border-radius:50%; border:2px solid #22c55e;"/>'
+                '</a><br><small style="color:#666;">{url}</small>',
+                url=obj.face_image
+            )
+        return '—'
+    face_image_preview.short_description = 'Face Photo'
 
 
 @admin.register(UserProfile)

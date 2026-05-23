@@ -52,3 +52,54 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
             instance.save()  # This will automatically update updated_at
         return instance
+
+
+class DriverRegistrationSerializer(serializers.Serializer):
+    """
+    Handles driver signup — creates/updates User with role=DRIVER
+    and creates DriverProfile with is_verified=False.
+    Frontend sends Supabase image URLs (not actual files).
+    """
+    full_name    = serializers.CharField(max_length=100)
+    area         = serializers.CharField(max_length=100)
+    vehicle_type = serializers.ChoiceField(choices=[
+        'MOTORCYCLE', 'BICYCLE', 'CAR', 'MINI_TRUCK', 'ON_FOOT'
+    ])
+    id_image     = serializers.URLField(required=False, allow_blank=True)
+    face_image   = serializers.URLField(required=False, allow_blank=True)
+    email        = serializers.EmailField(required=False, allow_blank=True)
+
+    def validate_id_image(self, value):
+        if value:
+            try:
+                URLValidator()(value)
+            except ValidationError:
+                raise serializers.ValidationError('Invalid URL for id_image.')
+        return value
+
+    def validate_face_image(self, value):
+        if value:
+            try:
+                URLValidator()(value)
+            except ValidationError:
+                raise serializers.ValidationError('Invalid URL for face_image.')
+        return value
+
+
+class DriverProfileSerializer(serializers.ModelSerializer):
+    """Read serializer for returning driver profile data."""
+    phone        = serializers.CharField(source='user.phone_number', read_only=True)
+    email        = serializers.CharField(source='user.email', read_only=True)
+    supabase_uid = serializers.CharField(source='user.supabase_uid', read_only=True)
+
+    class Meta:
+        from .models import DriverProfile
+        model  = DriverProfile
+        fields = [
+            'id', 'full_name', 'phone', 'email', 'supabase_uid',
+            'area', 'vehicle_type', 'id_image', 'face_image', 'profile_image',
+            'status', 'rejection_reason',
+            'is_available', 'is_verified', 'is_online', 'is_blocked',
+            'total_tasks', 'created_at',
+        ]
+        read_only_fields = fields
