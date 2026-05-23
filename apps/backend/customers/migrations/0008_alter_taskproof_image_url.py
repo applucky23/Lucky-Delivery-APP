@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('customers', '0007_task_is_return_trip'),
+        ('customers', '0007_merge_20260510_1013'),
     ]
 
     operations = [

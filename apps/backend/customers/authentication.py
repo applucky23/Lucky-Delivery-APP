@@ -4,11 +4,9 @@ import requests
 import jwt
 from jwt.exceptions import InvalidTokenError, ExpiredSignatureError
 from jwt.algorithms import ECAlgorithm
-
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
-
-from .services import get_or_create_user_from_payload
+from .services.user_sync import get_or_create_user_from_payload
 
 logger = logging.getLogger(__name__)
 

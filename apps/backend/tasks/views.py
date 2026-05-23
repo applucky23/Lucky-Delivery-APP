@@ -224,9 +224,9 @@ class ManualAssignTaskAPIView(APIView):
             return Response({'error': 'Task not found'}, status=status.HTTP_404_NOT_FOUND)
 
         try:
-            driver_profile = DriverProfile.objects.get(id=driver_id)
+            driver_profile = DriverProfile.objects.get(id=driver_id, is_verified=True)
         except DriverProfile.DoesNotExist:
-            return Response({'error': 'Driver not found'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'error': 'Driver not found or not verified'}, status=status.HTTP_404_NOT_FOUND)
 
         try:
             result = manual_assign(task, driver_profile, admin=request.user)
