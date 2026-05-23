@@ -9,7 +9,7 @@ from django.core.exceptions import ValidationError
 from customers.models import Task, DriverProfile
 from .permissions import IsTaskOwnerOrAdminOrDriver, IsOwnerOrAdmin, IsDriver, IsAdminUser
 from .services.cancel_task import cancel
-from .services.task_assignment import dispatch
+from .services.task_creation import create_task
 from .services.geo_validation import validate_driver_at_pickup, mark_task_arrived
 from .services.task_progression import submit_item_amount, approve_price, reject_price, start_delivery
 from .services.task_accept_reject import accept_task, reject_task
@@ -68,8 +68,9 @@ class TaskListCreateView(APIView):
                 serializer = TaskSerializer(data=data)
 
             if serializer.is_valid():
-                task = serializer.save(user=request.user)
-                dispatch(task)
+                with transaction.atomic():
+                    task = serializer.save(user=request.user)
+                    create_task(task)
 
                 if user.role == 'ADMIN':
                     response_serializer = AdminTaskSerializer(task)
@@ -91,7 +92,7 @@ class TaskListCreateView(APIView):
 
 class TaskRetrieveApIView(RetrieveAPIView):
     """Retrieve task details with permission checks"""
-    queryset = Task.objects.select_related('user', 'driver')
+    queryset = Task.objects.select_related('user', 'driver', 'driver__user')
     permission_classes = [IsAuthenticated, IsTaskOwnerOrAdminOrDriver]
     lookup_field = 'id'
     lookup_url_kwarg = 'task_id'
@@ -104,7 +105,7 @@ class TaskRetrieveApIView(RetrieveAPIView):
 
 class TaskUpdateView(UpdateAPIView):
     """Handle individual task updates with partial update support"""
-    queryset = Task.objects.select_related('user', 'driver')
+    queryset = Task.objects.select_related('user', 'driver', 'driver__user')
     permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
     lookup_field = 'id'
     lookup_url_kwarg = 'task_id'
@@ -165,7 +166,7 @@ class AcceptTaskAPIView(APIView):
         """Accept a task - driver accepts a task they were assigned to"""
         try:
             driver_profile = get_driver_profile_or_404(request.user)
-            task = get_task_or_404(task_id)
+            task = get_task_or_404(task_id, select_related=['driver', 'driver__user'])
         except (Task.DoesNotExist, DriverProfile.DoesNotExist) as e:
             return Response({'error': str(e)}, status=status.HTTP_404_NOT_FOUND)
 
@@ -191,7 +192,7 @@ class RejectTaskAPIView(APIView):
         """Reject a task - driver rejects a task they were assigned to"""
         try:
             driver_profile = get_driver_profile_or_404(request.user)
-            task = get_task_or_404(task_id)
+            task = get_task_or_404(task_id, select_related=['driver'])
         except (Task.DoesNotExist, DriverProfile.DoesNotExist) as e:
             return Response({'error': str(e)}, status=status.HTTP_404_NOT_FOUND)
 
@@ -265,7 +266,12 @@ class MarkArrivedAPIView(APIView):
             )
 
         try:
-            validate_driver_at_pickup(driver_profile, task)
+            from customers.models import DriverLocation
+            try:
+                driver_location = DriverLocation.objects.get(driver=driver_profile)
+            except DriverLocation.DoesNotExist:
+                return Response({'error': 'Driver location not found'}, status=status.HTTP_400_BAD_REQUEST)
+            validate_driver_at_pickup(driver_profile, task, driver_location=driver_location)
             mark_task_arrived(task, driver_profile)
             return Response({'message': 'Arrival confirmed'}, status=status.HTTP_200_OK)
         except ValueError as e:

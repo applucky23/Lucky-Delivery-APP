@@ -13,11 +13,12 @@ class TaskSerializer(ModelSerializer):
         model = Task
         fields = [
             'id', 'type', 'pickup_lat', 'pickup_lng', 'dropoff_lat', 'dropoff_lng',
-            'estimated_distance_km', 'estimated_price', 'final_price', 'waiting_time_fee',
-            'minor_adjustment_fee', 'item_cost', 'status', 'note', 'created_at', 'completed_at',
-            'driver', 'user'
+            'estimated_distance_km', 'estimated_duration_minutes', 'estimated_price', 'final_price',
+            'waiting_time_fee', 'minor_adjustment_fee', 'item_cost', 'vehicle_type', 'status',
+            'note', 'is_return_trip', 'created_at', 'completed_at', 'driver', 'user'
         ]
-        read_only_fields = ('id', 'user', 'estimated_distance_km','estimated_price', 'final_price', 'waiting_time_fee',
+        read_only_fields = ('id', 'user', 'estimated_distance_km', 'estimated_duration_minutes',
+                          'estimated_price', 'final_price', 'waiting_time_fee',
                           'minor_adjustment_fee', 'completed_at', 'driver')
 
     def validate_type(self, value):

@@ -188,6 +188,6 @@ def verify_receipt(task, driver_profile, image_url: str, receipt_type: str) -> N
     # Always advance regardless of flag status; admins review after the fact
     try:
         task.start_delivery()
-        task.save()
+        task.save(update_fields=['status'])
     except Exception as exc:
         raise ValueError(f"Failed to start delivery: {exc}") from exc

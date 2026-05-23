@@ -1,5 +1,7 @@
 from django.db import transaction, IntegrityError
+from django.core.exceptions import ValidationError
 from customers.models import Task, TaskAssignment, AdminAction
+from core.services.capabilities import assert_driver_capable
 from django.utils import timezone
 import logging
 
@@ -22,9 +24,34 @@ def manual_assign(task, driver_profile, admin):
                 'success': False,
                 'message': 'Driver must be verified to be assigned'
             }
+        # Driver's vehicle must match what customer requested
+        if driver_profile.vehicle_type != task.vehicle_type:
+            return {
+                'success': False,
+                'message': (
+                    f'Customer requested {task.vehicle_type} but '
+                    f'driver has {driver_profile.vehicle_type}.'
+                )
+            }
+        # Driver's vehicle must handle the trip distance
+        if task.estimated_distance_km:
+            try:
+                assert_driver_capable(
+                    driver_profile,
+                    float(task.estimated_distance_km)
+                )
+            except ValidationError as e:
+                return {
+                    'success': False,
+                    'message': e.messages[0]
+                }
 
-        # Check if this driver already has a pending offer for this task
-        if TaskAssignment.objects.filter(task=task, driver=driver_profile, outcome='PENDING').exists():
+        # Check if this driver already has a pending offer
+        if TaskAssignment.objects.filter(
+            task=task,
+            driver=driver_profile,
+            outcome='PENDING'
+        ).exists():
             return {
                 'success': False,
                 'message': f'Driver {driver_profile.id} already has a pending offer for this task'
@@ -52,7 +79,10 @@ def manual_assign(task, driver_profile, admin):
             note=f'Admin manually offered task {task.id} to driver {driver_profile.id}'
         )
 
-        logger.info(f"Task {task.id} manually offered to driver {driver_profile.id} by admin {admin.id}")
+        logger.info(
+            f"Task {task.id} manually offered to driver "
+            f"{driver_profile.id} by admin {admin.id}"
+        )
 
         # TODO: [NOTIF] notify driver — MANUAL_ASSIGNMENT_OFFER
         # TODO: [FCM] push to driver to accept/reject

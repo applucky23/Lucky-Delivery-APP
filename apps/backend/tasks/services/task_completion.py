@@ -73,7 +73,7 @@ def complete_task(task, driver_profile):
     task.complete_task()
     task.final_price = final_price
     task.waiting_time_fee = waiting_fee
-    task.save()
+    task.save(update_fields=['status', 'final_price', 'waiting_time_fee', 'completed_at'])
 
     # Update driver
     driver = driver_profile

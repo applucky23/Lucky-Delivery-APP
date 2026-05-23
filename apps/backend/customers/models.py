@@ -127,7 +127,10 @@ class Task(models.Model):
     dropoff_lng = models.DecimalField(max_digits=9, decimal_places=6)
 
     estimated_distance_km = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
+    estimated_duration_minutes = models.DecimalField(max_digits=7, decimal_places=1, null=True, blank=True)
     estimated_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
+    vehicle_type = models.CharField(max_length=20,choices=DriverProfile.VEHICLE_CHOICES,null=True,blank=True,)
 
     final_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     waiting_time_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)

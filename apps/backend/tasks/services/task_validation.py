@@ -22,10 +22,7 @@ def validate_user_can_create_task(user):
 
 def validate_task_can_be_updated(task):
     """Validate if task can be updated"""
-    if task.status in ['COMPLETED', 'CANCELLED']:
-        raise ValidationError("Cannot update a completed or cancelled task.")
-    
     if task.status not in ['PENDING', 'ASSIGNED']:
         raise ValidationError("This task can no longer be updated.")
-    
+
     return True

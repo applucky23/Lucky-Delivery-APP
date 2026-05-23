@@ -12,7 +12,7 @@ def cancel(task,user):
     if user.role == 'ADMIN':
         previous_status = task.status
         task.cancel_task()
-        task.save()
+        task.save(update_fields=['status'])
 
         if task.driver:
             task.driver.is_available = True
@@ -44,12 +44,12 @@ def cancel(task,user):
         )
         return
     # owner rule - can only cancel pending tasks
-    if task.status not in ['PENDING', 'ASSIGNED']:
-        raise ValueError("Only pending or assigned tasks can be cancelled")
+    if task.status not in ['PENDING', 'ASSIGNED','AWAITING_APPROVAL']:
+        raise ValueError("Only pending,assigned or awaiting approval tasks can be cancelled")
     previous_status = task.status
 
     task.cancel_task()
-    task.save()
+    task.save(update_fields=['status'])
     if task.driver:
         task.driver.is_available = True
         task.driver.save(update_fields=["is_available"])

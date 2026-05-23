@@ -48,11 +48,11 @@ def accept_task(task, driver_profile):
         # This driver wins — advance FSM and assign
         task.driver = driver_profile
         task.assign_driver()
-        task.save()
+        task.save(update_fields=['driver', 'status'])
 
         # Set driver as unavailable while working on this task
         driver_profile.is_available = False
-        driver_profile.save()
+        driver_profile.save(update_fields=['is_available'])
 
         # Mark this assignment as accepted
         assignment.outcome = 'ACCEPTED'
