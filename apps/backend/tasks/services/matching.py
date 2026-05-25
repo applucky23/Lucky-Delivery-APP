@@ -42,7 +42,8 @@ def find_nearby_drivers(pickup_lat, pickup_lng, max_distance_km=10, limit=5):
         drivers_with_location = DriverLocation.objects.select_related('driver', 'driver__user').filter(
             driver__is_online=True,
             driver__is_available=True,
-            driver__is_blocked=False
+            driver__is_blocked=False,
+            driver__is_verified=True,
         )
         
         # Calculate distances and filter by max distance

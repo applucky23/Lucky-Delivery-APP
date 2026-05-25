@@ -17,6 +17,12 @@ def manual_assign(task, driver_profile, admin):
                 'message': f'Task is already {task.status}'
             }
 
+        if not driver_profile.is_verified:
+            return {
+                'success': False,
+                'message': 'Driver must be verified to be assigned'
+            }
+
         # Check if this driver already has a pending offer for this task
         if TaskAssignment.objects.filter(task=task, driver=driver_profile, outcome='PENDING').exists():
             return {
