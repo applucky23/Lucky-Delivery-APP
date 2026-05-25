@@ -5,17 +5,26 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 # Mapbox takes lng,lat — NOT lat,lng like everything else
-MAPBOX_DIRECTIONS_URL = "https://api.mapbox.com/directions/v5/mapbox/driving/{coords}"
+MAPBOX_DIRECTIONS_URL = "https://api.mapbox.com/directions/v5/mapbox/{profile}/{coords}"
+
+VEHICLE_TO_MAPBOX_PROFILE = {
+    "ON_FOOT":    "walking",
+    "BICYCLE":    "cycling",
+    "MOTORCYCLE": "driving",
+    "CAR":        "driving",
+    "MINI_TRUCK": "driving",
+}
 
 
-def get_route_data(origin: tuple[float, float],destination: tuple[float, float],) -> dict:
+def get_route_data(origin: tuple[float, float], destination: tuple[float, float], vehicle_type: str = "MOTORCYCLE") -> dict:
     """
     Calculate road distance and duration between two coordinate pairs
     using Mapbox Directions API.
 
     Args:
-        origin: (lat, lng) of pickup
-        destination: (lat, lng) of dropoff
+        origin:       (lat, lng) of pickup
+        destination:  (lat, lng) of dropoff
+        vehicle_type: DriverProfile vehicle type — used to select Mapbox routing profile
 
     Returns:
         {
@@ -30,8 +39,9 @@ def get_route_data(origin: tuple[float, float],destination: tuple[float, float],
     pickup_lng, pickup_lat = origin[1], origin[0]
     dropoff_lng, dropoff_lat = destination[1], destination[0]
 
+    profile = VEHICLE_TO_MAPBOX_PROFILE.get(vehicle_type, "driving")
     coords = f"{pickup_lng},{pickup_lat};{dropoff_lng},{dropoff_lat}"
-    url = MAPBOX_DIRECTIONS_URL.format(coords=coords)
+    url = MAPBOX_DIRECTIONS_URL.format(profile=profile, coords=coords)
 
     try:
         response = requests.get(

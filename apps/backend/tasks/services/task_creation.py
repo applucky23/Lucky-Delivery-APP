@@ -40,6 +40,7 @@ def create_task(task) -> object:
         route = get_route_data(
             origin=(float(task.pickup_lat), float(task.pickup_lng)),
             destination=(float(task.dropoff_lat), float(task.dropoff_lng)),
+            vehicle_type=task.vehicle_type,
         )
     except ValueError as e:
         logger.error(f"Routing failed for task #{task.id}: {e}")

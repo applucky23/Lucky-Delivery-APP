@@ -1,6 +1,7 @@
 from django.db import transaction
 from customers.models import Task, TaskAssignment
 from .task_assignment import dispatch
+from core.services.capabilities import is_driver_capable
 from django.utils import timezone
 import logging
 
@@ -44,6 +45,21 @@ def accept_task(task, driver_profile):
                 'message': 'No pending assignment found for this driver',
                 'already_taken': False
             }
+
+        # Re-validate driver's vehicle at accept time
+        # Driver may have changed vehicle type after the initial dispatch
+        if driver_profile.vehicle_type != task.vehicle_type:
+            return {
+                'success': False,
+                'message': f'Your vehicle type ({driver_profile.vehicle_type}) no longer matches what this task requires ({task.vehicle_type})'
+            }
+
+        if task.estimated_distance_km:
+            if not is_driver_capable(driver_profile, float(task.estimated_distance_km)):
+                return {
+                    'success': False,
+                    'message': f'Your vehicle cannot handle this trip distance ({task.estimated_distance_km}km)'
+                }
 
         # This driver wins — advance FSM and assign
         task.driver = driver_profile
