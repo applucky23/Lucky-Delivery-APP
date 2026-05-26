@@ -41,6 +41,7 @@ class Notification(models.Model):
     read_at = models.DateTimeField(null=True,blank=True)
     task = models.ForeignKey("customers.Task",on_delete=models.SET_NULL,null=True,blank=True,related_name='notifications')
     data = models.JSONField(default=dict,blank=True)
+    is_persistent = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
