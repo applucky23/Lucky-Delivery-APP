@@ -3,12 +3,13 @@ from .views import (TaskListCreateView, TaskRetrieveApIView, TaskUpdateView,
                     TaskCancelAPIView, AcceptTaskAPIView, RejectTaskAPIView,
                     ManualAssignTaskAPIView,MarkArrivedAPIView,SubmitItemAmountAPIView,
                     ApprovePriceAPIView,RejectPriceAPIView,VerifyReceiptAPIView,
-                    CompleteTaskAPIView,StartDeliveryAPIView,
+                    CompleteTaskAPIView,StartDeliveryAPIView,TaskEstimateAPIView,
                     )
 
 
 
 urlpatterns = [
+    path('tasks/estimate/', TaskEstimateAPIView.as_view(), name='task-estimate'),
     path('tasks/', TaskListCreateView.as_view(), name='task-list-create'),
     path('tasks/<int:task_id>/', TaskRetrieveApIView.as_view(), name='task-retrieve'),
     path('tasks/<int:task_id>/update/', TaskUpdateView.as_view(), name='task-detail-update'),

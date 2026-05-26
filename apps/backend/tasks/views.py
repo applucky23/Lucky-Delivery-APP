@@ -17,8 +17,13 @@ from .services.manual_assignments import manual_assign
 from .services.receipt_verification import verify_receipt
 from .services.task_completion import complete_task
 from .services.task_validation import validate_user_can_create_task, validate_task_can_be_updated
+from .services.pricing import calculate_estimated_price
 from .serializers import TaskSerializer, TaskDetailSerializer, AdminTaskSerializer
 from .utils import get_task_or_404, get_driver_profile_or_404
+
+
+from core.services.maps.routing import get_route_data
+from core.services.capabilities import assert_vehicle_capable
 
 
 logger = logging.getLogger(__name__)
@@ -488,3 +493,69 @@ class CompleteTaskAPIView(APIView):
                 {'error': 'An unexpected error occurred while completing the task'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class TaskEstimateAPIView(APIView):
+    """
+    POST /tasks/estimate/
+    Returns estimated distance, duration, and price for given coordinates
+    without creating a task. Used by the frontend as a price preview.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        required = ['pickup_lat', 'pickup_lng', 'dropoff_lat', 'dropoff_lng', 'vehicle_type', 'type']
+        for field in required:
+            if not request.data.get(field):
+                return Response({'error': f'{field} is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            pickup_lat  = float(request.data['pickup_lat'])
+            pickup_lng  = float(request.data['pickup_lng'])
+            dropoff_lat = float(request.data['dropoff_lat'])
+            dropoff_lng = float(request.data['dropoff_lng'])
+        except (ValueError, TypeError):
+            return Response({'error': 'Coordinates must be valid numbers'}, status=status.HTTP_400_BAD_REQUEST)
+
+        vehicle_type  = request.data['vehicle_type']
+        task_type     = request.data['type']
+        is_return_trip = request.data.get('is_return_trip', False)
+
+        valid_vehicle_types = ['ON_FOOT', 'BICYCLE', 'MOTORCYCLE', 'CAR', 'MINI_TRUCK']
+        valid_task_types    = ['DELIVERY', 'SHOPPING', 'ERRAND']
+
+        if vehicle_type not in valid_vehicle_types:
+            return Response({'error': f'Invalid vehicle_type. Must be one of: {valid_vehicle_types}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if task_type not in valid_task_types:
+            return Response({'error': f'Invalid type. Must be one of: {valid_task_types}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            route = get_route_data(
+                origin=(pickup_lat, pickup_lng),
+                destination=(dropoff_lat, dropoff_lng),
+                vehicle_type=vehicle_type,
+            )
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            assert_vehicle_capable(vehicle_type, route['distance_km'])
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        estimated_price = calculate_estimated_price(
+            task_type=task_type,
+            distance_km=route['distance_km'],
+            vehicle_type=vehicle_type,
+            is_return_trip=bool(is_return_trip),
+        )
+
+        return Response({
+            'distance_km':       route['distance_km'],
+            'duration_minutes':  route['duration_minutes'],
+            'estimated_price':   str(estimated_price),
+            'vehicle_type':      vehicle_type,
+            'type':              task_type,
+            'is_return_trip':    bool(is_return_trip),
+        }, status=status.HTTP_200_OK)
