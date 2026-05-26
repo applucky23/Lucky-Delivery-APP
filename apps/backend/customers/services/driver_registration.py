@@ -1,6 +1,7 @@
 import logging
 from django.db import IntegrityError, transaction
 from ..models import DriverProfile
+from notifications.services.notify_service import notify_welcome_driver, notify_admin_new_driver
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,8 @@ def register_driver(user, data):
 
     logger.info(f'[Driver] {"Created" if created else "Updated"} profile for user id={user.id}')
 
-    # TODO: [NOTIF] Send notification to admins about new driver registration
-    # TODO: [NOTIF] Include driver details (name, area, vehicle type, images) for admin review
+    if created:
+        notify_welcome_driver(user)
+        notify_admin_new_driver(user)
 
     return profile, created

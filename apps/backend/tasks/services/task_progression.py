@@ -1,6 +1,7 @@
 from django.utils import timezone
 from .cancel_task import cancel
 from customers.models import Task, AdminAction
+from notifications.services.notify_service import notify, notify_price_approved, notify_price_rejected
 
 
 def start_delivery(task, driver_profile):
@@ -18,7 +19,13 @@ def start_delivery(task, driver_profile):
     task.start_delivery()  # FSM transition
     task.save(update_fields=['status'])
 
-    # TODO: notify customer that driver is on the way
+    notify(
+        event='DRIVER_ON_THE_WAY',
+        user=task.customer,
+        task=task,
+        context={'task_type': task.get_type_display()},
+        data={'screen': 'active_task', 'task_id': task.id},
+    )
 
 
 def submit_item_amount(task, driver_profile, reported_amount):
@@ -34,7 +41,13 @@ def submit_item_amount(task, driver_profile, reported_amount):
     task.request_approval()
     task.save(update_fields=['item_cost', 'status'])
 
-    # TODO: notify customer that price approval is required
+    notify(
+        event='PRICE_APPROVAL_REQUIRED',
+        user=task.customer,
+        task=task,
+        context={'item_cost': str(reported_amount)},
+        data={'screen': 'approve_price', 'task_id': task.id},
+    )
 
 
 def approve_price(task, user):
@@ -60,7 +73,7 @@ def approve_price(task, user):
             note=f'Admin approved item cost for task {task.id}',
         )
 
-    # TODO: notify driver that price was approved
+    notify_price_approved(task.driver, task)
 
 
 def reject_price(task, user):
@@ -86,5 +99,5 @@ def reject_price(task, user):
             note=f'Admin rejected item cost for task {task.id}',
         )
 
-    # TODO: notify driver that price was rejected and prompt them to rate the user
+    notify_price_rejected(task.driver, task)
     # TODO: future — compensation logic for driver

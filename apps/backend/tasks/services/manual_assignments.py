@@ -2,6 +2,7 @@ from django.db import transaction, IntegrityError
 from django.core.exceptions import ValidationError
 from customers.models import Task, TaskAssignment, AdminAction
 from core.services.capabilities import assert_driver_capable
+from notifications.services.notify_service import notify
 from django.utils import timezone
 import logging
 
@@ -84,8 +85,21 @@ def manual_assign(task, driver_profile, admin):
             f"{driver_profile.id} by admin {admin.id}"
         )
 
-        # TODO: [NOTIF] notify driver — MANUAL_ASSIGNMENT_OFFER
         # TODO: [FCM] push to driver to accept/reject
+
+        notify(
+            event='TASK_OFFER',
+            user=driver_profile.user,
+            task=task,
+            context={'task_type': task.get_type_display()},
+            data={
+                'screen': 'task_offer',
+                'task_id': task.id,
+                'task_type': task.type,
+                'pickup_lat': str(task.pickup_lat),
+                'pickup_lng': str(task.pickup_lng),
+            },
+        )
 
         return {
             'success': True,

@@ -1,6 +1,10 @@
 NOTIFICATION_TEMPLATES = {
 
     # ─── Task offer & assignment ──────────────────────────────────
+    "ASSIGNMENT_CONFIRMED": {
+        "title": "Task Assigned to You",
+        "message": "You have been assigned a {task_type} task. Head to the pickup location.",
+    },
     "TASK_OFFER": {
         "title": "New Task Available",
         "message": "You have a new {task_type} task near you.",

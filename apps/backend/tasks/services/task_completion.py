@@ -1,6 +1,7 @@
 from decimal import Decimal
 from django.db import transaction
 from customers.models import TaskTransaction, WalletTransaction
+from notifications.services.notify_service import notify, notify_commission_added
 
 COMMISSION_RATE = Decimal('0.15')
 WAITING_FEE_PER_MINUTE = Decimal('1')  # 1 birr per minute
@@ -111,6 +112,26 @@ def complete_task(task, driver_profile):
         }
     )
 
-    # TODO: notify customer that task is completed with final price
-    # TODO: notify driver of commission amount added to debt
     # TODO: prompt both driver and customer to rate each other
+    notify(
+        event='TASK_COMPLETED',
+        user=task.customer,
+        task=task,
+        context={'task_type': task.get_type_display(), 'final_price': str(final_price)},
+        data={'screen': 'rate_driver', 'task_id': task.id},
+    )
+    notify_commission_added(driver_profile, task, commission)
+    notify(
+        event='RATE_REMINDER',
+        user=task.customer,
+        task=task,
+        context={'rate_message': 'How was your experience? Rate your driver.'},
+        data={'screen': 'rate_driver', 'task_id': task.id},
+    )
+    notify(
+        event='RATE_REMINDER',
+        user=driver_profile.user,
+        task=task,
+        context={'rate_message': 'How was your experience? Rate your customer.'},
+        data={'screen': 'rate_customer', 'task_id': task.id},
+    )

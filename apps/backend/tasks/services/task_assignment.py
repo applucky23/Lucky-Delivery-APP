@@ -2,6 +2,7 @@ from django.utils import timezone
 from django.db import transaction
 from customers.models import Task, TaskAssignment
 from .matching import find_best_drivers_for_task
+from notifications.services.notify_service import notify_task_offer
 import logging
 
 logger = logging.getLogger(__name__)
@@ -43,8 +44,9 @@ def dispatch(task):
         )
         
         logger.info(f"Task {task.id} dispatched to {len(created_assignments)} drivers")
-        
-        # TODO: Send notifications to all drivers
+
+        notify_task_offer(best_drivers, task)
+
         return {
             'success': True,
             'message': f'Task dispatched to {len(created_assignments)} drivers',

@@ -1,6 +1,7 @@
 from geopy.distance import geodesic
 from django.utils import timezone
 from customers.models import DriverLocation
+from notifications.services.notify_service import notify
 
 MAX_ARRIVAL_DISTANCE_METERS = 300
 
@@ -37,4 +38,9 @@ def mark_task_arrived(task, driver_profile):
     else:
         task.save(update_fields=['status', 'arrived_at_location_at'])
 
-    # TODO: notify customer that driver has arrived
+    notify(
+        event='DRIVER_ARRIVED',
+        user=task.customer,
+        task=task,
+        data={'screen': 'active_task', 'task_id': task.id},
+    )

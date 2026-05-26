@@ -4,6 +4,9 @@ from django_admin_geomap import GeoItem
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django_fsm import FSMField, transition
 import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class UserManager(BaseUserManager):
@@ -100,6 +103,10 @@ class DriverProfile(models.Model):
     is_online    = models.BooleanField(default=False)
     is_blocked   = models.BooleanField(default=False)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.__original_status = self.status
+
     def __str__(self):
         return f"Driver: {self.user.username}"
 
@@ -107,6 +114,20 @@ class DriverProfile(models.Model):
         self.is_blocked  = self.current_debt >= self.debt_limit
         self.is_verified = self.status == 'APPROVED'
         super().save(*args, **kwargs)
+
+        if self.status != self.__original_status:
+            self._send_status_notification()
+            self.__original_status = self.status
+
+    def _send_status_notification(self):
+        try:
+            from notifications.services.notify_service import notify_driver_approved, notify_driver_rejected
+            if self.status == 'APPROVED':
+                notify_driver_approved(self.user)
+            elif self.status == 'REJECTED':
+                notify_driver_rejected(self.user, reason=self.rejection_reason)
+        except Exception:
+            logger.exception('Failed to send driver status notification for user %s', self.user_id)
 
 
 class Task(models.Model):

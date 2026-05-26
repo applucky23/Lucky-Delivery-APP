@@ -1,7 +1,7 @@
 from django.db import transaction
 from customers.models import TaskTransaction,AdminAction,TaskAssignment
+from notifications.services.notify_service import notify
 
-# TODO: Trigger notification (TASK_CANCELLED) via notifications app
 @transaction.atomic
 def cancel(task,user):
     """Cancel a task using FSM transition"""
@@ -42,6 +42,13 @@ def cancel(task,user):
             action_type='CANCEL_TASK',
             note=f'Admin cancelled task {task.id}',
         )
+        notify(
+            event='TASK_CANCELLED',
+            user=task.customer,
+            task=task,
+            context={'task_type': task.get_type_display()},
+            data={'screen': 'home', 'task_id': task.id},
+        )
         return
     # owner rule - can only cancel pending tasks
     if task.status not in ['PENDING', 'ASSIGNED','AWAITING_APPROVAL']:
@@ -70,4 +77,11 @@ def cancel(task,user):
             'cancelled_by': 'owner',
             'reason': 'User cancelled their own task'
         }
+    )
+    notify(
+        event='TASK_CANCELLED',
+        user=task.customer,
+        task=task,
+        context={'task_type': task.get_type_display()},
+        data={'screen': 'home', 'task_id': task.id},
     )

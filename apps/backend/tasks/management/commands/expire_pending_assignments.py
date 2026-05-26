@@ -66,4 +66,3 @@ class Command(BaseCommand):
                     logger.info(f'Task {task.id} re-dispatched to {result["drivers_notified"]} drivers after timeout')
                 else:
                     logger.warning(f'Task {task.id} re-dispatch failed after timeout: {result["message"]}')
-                    # TODO: notify user that no drivers are available

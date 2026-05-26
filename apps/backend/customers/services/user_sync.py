@@ -1,5 +1,6 @@
 import logging
 from django.contrib.auth import get_user_model
+from notifications.services.notify_service import notify_welcome_customer
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -56,4 +57,5 @@ def get_or_create_user_from_payload(payload: dict):
         role='USER',
     )
     logger.info(f'[UserSync] Created new user id={user.id} phone={user.phone_number}')
+    notify_welcome_customer(user)
     return user, True

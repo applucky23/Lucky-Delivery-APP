@@ -9,6 +9,7 @@ from decimal import Decimal
 from urllib.parse import urlparse
 from django.conf import settings
 from customers.models import TaskProof
+from notifications.services.notify_service import notify_role
 
 
 # Windows local dev only — Linux production finds it automatically
@@ -177,7 +178,13 @@ def verify_receipt(task, driver_profile, image_url: str, receipt_type: str) -> N
     )
 
     if is_flagged:
-        # TODO: trigger admin notification (email / internal alert) here
+        notify_role(
+            event='SYSTEM_ALERT',
+            role='ADMIN',
+            task=task,
+            context={'alert_message': f'Receipt flagged for task {task.id} — extracted {extracted:.2f} vs reported {float(item_cost):.2f} ETB.'},
+            data={'screen': 'admin_task_detail', 'task_id': task.id},
+        )
         logger.warning(
             "Receipt flagged for task %s — extracted %.2f vs reported %.2f",
             task.id,

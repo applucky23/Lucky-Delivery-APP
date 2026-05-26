@@ -2,6 +2,7 @@ from django.db import transaction
 from customers.models import Task, TaskAssignment
 from .task_assignment import dispatch
 from core.services.capabilities import is_driver_capable
+from notifications.services.notify_service import notify, notify_task_taken
 from django.utils import timezone
 import logging
 
@@ -86,10 +87,30 @@ def accept_task(task, driver_profile):
 
         logger.info(f"Task {task.id} accepted by driver {driver_profile.id}")
 
-        # TODO: [NOTIF] notify winning driver — ASSIGNMENT_CONFIRMED
-        # TODO: [NOTIF] notify losing drivers — TASK_TAKEN
-        # TODO: [NOTIF] notify task user — DRIVER_ASSIGNED
-        # TODO: [FCM] push to all parties above
+        # Notify winning driver
+        notify(
+            event='ASSIGNMENT_CONFIRMED',
+            user=driver_profile.user,
+            task=task,
+            context={'task_type': task.get_type_display()},
+            data={'screen': 'active_task', 'task_id': task.id},
+        )
+        # Notify losing drivers
+        losing_profiles = [
+            a.driver for a in TaskAssignment.objects.filter(
+                task=task, outcome='LOST'
+            ).select_related('driver')
+        ]
+        if losing_profiles:
+            notify_task_taken(losing_profiles, task)
+        # Notify customer
+        notify(
+            event='TASK_ASSIGNED',
+            user=task.customer,
+            task=task,
+            context={'driver_name': driver_profile.user.get_full_name() or driver_profile.user.username},
+            data={'screen': 'active_task', 'task_id': task.id},
+        )
 
         return {
             'success': True,
@@ -146,9 +167,15 @@ def reject_task(task, driver_profile):
             redispatch_result = dispatch(task)
 
             if not redispatch_result['success']:
-                # No drivers found at all — TODO: mark task differently if needed
+                # No drivers found at all
                 logger.error(f"Re-dispatch failed for task {task.id}")
-                # TODO: [NOTIF] notify user — NO_DRIVERS_FOUND
+                notify(
+                    event='NO_DRIVERS_FOUND',
+                    user=task.customer,
+                    task=task,
+                    context={'task_type': task.get_type_display()},
+                    data={'screen': 'home', 'task_id': task.id},
+                )
                 # TODO: [SUPABASE JOB] handle max retry limit
 
         return {
