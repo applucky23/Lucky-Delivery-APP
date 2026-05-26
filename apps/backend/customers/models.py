@@ -307,24 +307,6 @@ class Rating(models.Model):
         unique_together = ('from_user', 'to_user', 'task')
 
 
-class Notification(models.Model):
-    TYPE_CHOICES = [
-        ('TASK_ASSIGNED', 'Task Assigned'), ('PRICE_UPDATE', 'Price Update'),
-        ('TASK_COMPLETED', 'Task Completed'), ('PAYMENT_REQUIRED', 'Payment Required'),
-        ('SYSTEM_ALERT', 'System Alert'),('TASK_OFFER','Task Offer')
-    ]
-
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
-    type = models.CharField(max_length=20, choices=TYPE_CHOICES)
-    title = models.CharField(max_length=255)
-    message = models.TextField()
-    is_read = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"{self.type} → {self.user}"
-
-
 class AdminAction(models.Model):
     admin = models.ForeignKey(User, on_delete=models.CASCADE, related_name='admin_actions')
     task = models.ForeignKey(Task, on_delete=models.SET_NULL, null=True, blank=True)
