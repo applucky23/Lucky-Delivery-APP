@@ -28,6 +28,11 @@ SUPABASE_JWT_SECRET = os.getenv('SUPABASE_JWT_SECRET')
 #Map Api
 MAPBOX_ACCESS_TOKEN = os.getenv('MAPBOX_ACCESS_TOKEN', default='')
 
+#Firebase credentials
+FIREBASE_CREDENTIALS_PATH = os.getenv('FIREBASE_CREDENTIALS_PATH')
+FIREBASE_PROJECT_ID = os.getenv('FIREBASE_PROJECT_ID')
+
+
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
