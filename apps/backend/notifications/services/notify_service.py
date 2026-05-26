@@ -7,6 +7,12 @@ from .fcm import send_push, send_push_many
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
+PERSISTENT_EVENTS = {
+    "SYSTEM_ALERT",
+    "DRIVER_STATUS_UPDATE",
+    "PAYMENT_REQUIRED",
+}
+
 
 def _get_active_tokens(user) -> list[str]:
     """
@@ -58,6 +64,7 @@ def notify(event: str, user, task=None, context: dict = None, data: dict = None)
             message=rendered["message"],
             task=task,
             data=data or {},
+            is_persistent=event in PERSISTENT_EVENTS,
         )
 
         # ── Send FCM push ─────────────────────────────────────────
@@ -116,6 +123,7 @@ def notify_many(event: str, users, task=None, context: dict = None, data: dict =
                 message=rendered["message"],
                 task=task,
                 data=data or {},
+                is_persistent=event in PERSISTENT_EVENTS,
             )
             for user in users
         ])
