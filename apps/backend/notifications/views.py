@@ -4,9 +4,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
-
-from notifications.models import Notification, FCMDevice
-from notifications.service import notify_all, notify_role
+from .models import Notification, FCMDevice
+from .services.notify_service import notify_all, notify_role
 from tasks.permissions import IsAdminUser
 
 logger = logging.getLogger(__name__)

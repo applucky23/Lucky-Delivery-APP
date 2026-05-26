@@ -1,6 +1,6 @@
 import logging
 from django.contrib.auth import get_user_model
-from notifications.models import Notification, FCMDevice
+from ..models import Notification, FCMDevice
 from .templates import render_template
 from .fcm import send_push, send_push_many
 
