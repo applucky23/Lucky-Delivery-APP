@@ -1,7 +1,8 @@
 from django.db import transaction
+from django.utils import timezone
 from customers.models import Task, TaskAssignment
 from .task_assignment import dispatch
-from django.utils import timezone
+from notifications.services import create_notification
 import logging
 
 logger = logging.getLogger(__name__)
@@ -70,10 +71,11 @@ def accept_task(task, driver_profile):
 
         logger.info(f"Task {task.id} accepted by driver {driver_profile.id}")
 
-        # TODO: [NOTIF] notify winning driver — ASSIGNMENT_CONFIRMED
-        # TODO: [NOTIF] notify losing drivers — TASK_TAKEN
-        # TODO: [NOTIF] notify task user — DRIVER_ASSIGNED
-        # TODO: [FCM] push to all parties above
+        create_notification(
+            task.user, 'TASK_ASSIGNED',
+            'Driver assigned',
+            f'{driver_profile.full_name} has been assigned to your {task.get_type_display().lower()} task.',
+        )
 
         return {
             'success': True,
@@ -130,10 +132,8 @@ def reject_task(task, driver_profile):
             redispatch_result = dispatch(task)
 
             if not redispatch_result['success']:
-                # No drivers found at all — TODO: mark task differently if needed
+                # No drivers found — exhaust/cancel flow handles notification later
                 logger.error(f"Re-dispatch failed for task {task.id}")
-                # TODO: [NOTIF] notify user — NO_DRIVERS_FOUND
-                # TODO: [SUPABASE JOB] handle max retry limit
 
         return {
             'success': True,

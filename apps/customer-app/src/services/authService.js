@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabaseClient';
 
-const DJANGO_URL = 'https://a303-196-189-145-165.ngrok-free.app/api/v1';
+const DJANGO_URL = 'http://192.168.1.3:8000/api/v1';
 
 // ── Supabase Phone OTP (via AfroMessage hook) ─────────────────────────────────
 
@@ -139,5 +139,16 @@ export const updateProfile = (data) => apiPut('/profile/', data);
 
 export const getTasks     = ()         => apiGet('/tasks/');
 export const getTask      = (id)       => apiGet(`/tasks/${id}/`);
-export const cancelTask   = (id)       => apiPost(`/tasks/${id}/cancel/`, {});
-export const approveTask  = (id)       => apiPost(`/tasks/${id}/approve/`, {});
+export const cancelTask    = (id)       => apiPost(`/tasks/${id}/cancel/`, {});
+
+// ── Rating ─────────────────────────────────────────────────────────────────────
+
+export const rateTask       = (taskId, rating, comment) => apiPost(`/tasks/${taskId}/rate/`, { rating, comment });
+export const getTaskRating  = (taskId) => apiGet(`/tasks/${taskId}/rate/`);
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+
+export const getNotifications   = ()      => apiGet('/notifications/');
+export const getUnreadCount     = ()      => apiGet('/notifications/unread-count/');
+export const markRead           = (id)    => apiPost(`/notifications/${id}/read/`, {});
+export const markAllRead        = ()      => apiPost('/notifications/read-all/', {});

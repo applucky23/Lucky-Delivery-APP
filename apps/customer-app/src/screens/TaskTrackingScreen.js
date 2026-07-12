@@ -1,24 +1,39 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, StatusBar, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import { getTask } from '../services/authService';
+import MapView, { UrlTile, Marker, Polyline } from 'react-native-maps';
+import { getTask, getTaskRating } from '../services/authService';
+import { useRating } from '../contexts/RatingContext';
 
 const STATUS_CONFIG = {
-  PENDING:           { label: 'Pending',        color: '#6B7280', bg: '#F3F4F6' },
-  ASSIGNED:          { label: 'Assigned',        color: '#2563EB', bg: '#EFF6FF' },
-  ARRIVED:           { label: 'Driver Arrived',  color: '#7C3AED', bg: '#F5F3FF' },
-  AWAITING_APPROVAL: { label: 'Needs Approval',  color: '#D97706', bg: '#FFFBEB' },
-  PURCHASED:         { label: 'Purchased',       color: '#0891B2', bg: '#ECFEFF' },
-  DELIVERING:        { label: 'Delivering',      color: '#EA580C', bg: '#FFF7ED' },
-  COMPLETED:         { label: 'Completed',       color: '#16A34A', bg: '#F0FDF4' },
-  CANCELLED:         { label: 'Cancelled',       color: '#DC2626', bg: '#FEF2F2' },
+  PENDING:           { label: 'Pending',           color: '#6B7280', bg: '#F3F4F6' },
+  ASSIGNED:          { label: 'Assigned',           color: '#2563EB', bg: '#EFF6FF' },
+  ARRIVED:           { label: 'Driver Arrived',     color: '#7C3AED', bg: '#F5F3FF' },
+  AWAITING_APPROVAL: { label: 'Needs Approval',     color: '#D97706', bg: '#FFFBEB' },
+  PURCHASED:         { label: 'Purchased',          color: '#0891B2', bg: '#ECFEFF' },
+  DELIVERING:        { label: 'Delivering',         color: '#EA580C', bg: '#FFF7ED' },
+  AWAITING_PAYMENT:  { label: 'Payment Pending',    color: '#D97706', bg: '#FFFBEB' },
+  COMPLETED:         { label: 'Completed',          color: '#16A34A', bg: '#F0FDF4' },
+  CANCELLED:         { label: 'Cancelled',          color: '#DC2626', bg: '#FEF2F2' },
 };
 
-const STATUS_STEPS  = ['PENDING', 'ASSIGNED', 'ARRIVED', 'AWAITING_APPROVAL', 'PURCHASED', 'DELIVERING', 'COMPLETED'];
-const STATUS_LABELS = ['Pending', 'Assigned', 'Arrived', 'Approval', 'Purchased', 'Delivering', 'Done'];
+const getStatusSteps = (type) => {
+  if (type === 'SHOPPING') return { steps: ['PENDING', 'ASSIGNED', 'ARRIVED', 'PURCHASED', 'DELIVERING', 'AWAITING_PAYMENT', 'COMPLETED'], labels: ['Pending', 'Assigned', 'Arrived', 'Purchased', 'Delivering', 'Payment', 'Done'] };
+  if (type === 'ERRAND') return { steps: ['PENDING', 'ASSIGNED', 'ARRIVED', 'AWAITING_PAYMENT', 'COMPLETED'], labels: ['Pending', 'Assigned', 'Arrived', 'Payment', 'Done'] };
+  return { steps: ['PENDING', 'ASSIGNED', 'ARRIVED', 'DELIVERING', 'AWAITING_PAYMENT', 'COMPLETED'], labels: ['Pending', 'Assigned', 'Arrived', 'Delivering', 'Payment', 'Done'] };
+};
+
+const calcDistance = (lat1, lng1, lat2, lng2) => {
+  if (!lat1 || !lng1 || !lat2 || !lng2) return null;
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng/2)**2;
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)) * 100) / 100;
+};
 
 const TYPE_META = {
   DELIVERY: { icon: 'local-shipping', label: 'Pick & Drop' },
@@ -26,11 +41,12 @@ const TYPE_META = {
   ERRAND:   { icon: 'assignment',     label: 'Run Errand' },
 };
 
-const StatusFlow = ({ currentStatus }) => {
-  const currentIdx = STATUS_STEPS.indexOf(currentStatus);
+const StatusFlow = ({ currentStatus, taskType }) => {
+  const { steps, labels } = getStatusSteps(taskType);
+  const currentIdx = steps.indexOf(currentStatus);
   return (
     <View style={s.flowRow}>
-      {STATUS_STEPS.map((step, i) => {
+      {steps.map((step, i) => {
         const done   = i < currentIdx;
         const active = i === currentIdx;
         return (
@@ -41,10 +57,10 @@ const StatusFlow = ({ currentStatus }) => {
                 {active && <View style={s.flowDotInner} />}
               </View>
               <Text style={[s.flowLabel, active && s.flowLabelActive]} numberOfLines={1}>
-                {STATUS_LABELS[i]}
+                {labels[i]}
               </Text>
             </View>
-            {i < STATUS_STEPS.length - 1 && (
+            {i < steps.length - 1 && (
               <View style={[s.flowLine, i < currentIdx && s.flowLineDone]} />
             )}
           </React.Fragment>
@@ -54,29 +70,79 @@ const StatusFlow = ({ currentStatus }) => {
   );
 };
 
+const PICKUP_COLOR = '#16A34A';
+const DROPOFF_COLOR = '#DC2626';
+const DRIVER_COLOR = '#2563EB';
+const DRIVER_OFFSET = 0.00015;
+const offsetDriverCoord = (coord) => coord ? { latitude: coord.latitude + DRIVER_OFFSET, longitude: coord.longitude + DRIVER_OFFSET } : null;
+
 const TaskTrackingScreen = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
   const { taskId } = route.params;
+  const { triggerRating } = useRating();
   const [task, setTask]     = useState(null);
   const [loading, setLoading] = useState(true);
+  const [alreadyRated, setAlreadyRated] = useState(false);
+  const [ratingTriggered, setRatingTriggered] = useState(false);
+  const mapRef = useRef(null);
+  const fittedRef = useRef(false);
+  const hadDriverRef = useRef(false);
+  const completedRef = useRef(false);
 
   const load = useCallback(async () => {
     try {
       const data = await getTask(taskId);
-      if (data?.id) setTask(data);
+      if (data?.id) {
+        setTask(data);
+        if (data.status === 'COMPLETED') {
+          completedRef.current = true;
+          if (!ratingTriggered && !alreadyRated) {
+            getTaskRating(taskId).then(res => {
+              if (res?.rated === false) {
+                triggerRating(taskId);
+                setRatingTriggered(true);
+              } else if (res?.id) {
+                setAlreadyRated(true);
+              }
+            }).catch(() => {});
+          }
+        }
+      }
     } catch (err) {
       console.warn('[Tracking]', err.message);
     } finally {
       setLoading(false);
     }
-  }, [taskId]);
+  }, [taskId, ratingTriggered, alreadyRated, triggerRating]);
 
   useEffect(() => {
     load();
-    // Poll every 10s for status updates
-    const interval = setInterval(load, 10000);
+    const interval = setInterval(() => {
+      if (completedRef.current) return;
+      load();
+    }, 10000);
     return () => clearInterval(interval);
   }, [load]);
+
+  useEffect(() => {
+    if (!task) return;
+    const coords = [];
+    if (task.pickup_lat && task.pickup_lng) coords.push({ latitude: parseFloat(task.pickup_lat), longitude: parseFloat(task.pickup_lng) });
+    if (task.dropoff_lat && task.dropoff_lng) coords.push({ latitude: parseFloat(task.dropoff_lat), longitude: parseFloat(task.dropoff_lng) });
+    const hasDriver = !!(task.driver_latitude && task.driver_longitude);
+    if (hasDriver) coords.push({ latitude: task.driver_latitude, longitude: task.driver_longitude });
+    if (coords.length > 1 && (!fittedRef.current || (hasDriver && !hadDriverRef.current))) {
+      setTimeout(() => {
+        mapRef.current?.fitToCoordinates(coords, { edgePadding: { top: 80, right: 80, bottom: 260, left: 80 }, animated: true });
+      }, 300);
+      fittedRef.current = true;
+      hadDriverRef.current = hasDriver;
+    }
+  }, [task]);
+
+  const pickupCoord  = task?.pickup_lat && task?.pickup_lng ? { latitude: parseFloat(task.pickup_lat), longitude: parseFloat(task.pickup_lng) } : null;
+  const dropoffCoord = task?.dropoff_lat && task?.dropoff_lng ? { latitude: parseFloat(task.dropoff_lat), longitude: parseFloat(task.dropoff_lng) } : null;
+  const driverCoord  = task?.driver_latitude && task?.driver_longitude ? offsetDriverCoord({ latitude: task.driver_latitude, longitude: task.driver_longitude }) : null;
 
   const cfg  = task ? (STATUS_CONFIG[task.status] || STATUS_CONFIG.PENDING) : null;
   const meta = task ? (TYPE_META[task.type] || TYPE_META.ERRAND) : null;
@@ -85,21 +151,52 @@ const TaskTrackingScreen = ({ route, navigation }) => {
     <View style={s.container}>
       <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
 
-      {/* Map placeholder */}
+      {/* Live Map */}
       <View style={s.map}>
-        {[...Array(8)].map((_, i) => (
-          <View key={`h${i}`} style={[s.gridLine, s.gridH, { top: `${(i + 1) * 11}%` }]} />
-        ))}
-        {[...Array(6)].map((_, i) => (
-          <View key={`v${i}`} style={[s.gridLine, s.gridV, { left: `${(i + 1) * 14}%` }]} />
-        ))}
-        <View style={s.mapCenter}>
-          <View style={s.mapPinOuter}>
-            <View style={s.mapPinInner} />
-          </View>
-          <Text style={s.mapLabel}>Live Tracking</Text>
-          <Text style={s.mapSub}>Map integration coming soon</Text>
-        </View>
+        <MapView
+          ref={mapRef}
+          style={s.map}
+          mapType="none"
+          initialRegion={{
+            latitude: 9.0192,
+            longitude: 38.7578,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+          }}
+        >
+          <UrlTile
+            urlTemplate="https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
+            maximumZ={19}
+            flipY={false}
+          />
+          {pickupCoord && (
+            <Marker coordinate={pickupCoord} title="Pickup" pinColor={PICKUP_COLOR} />
+          )}
+          {dropoffCoord && (
+            <Marker coordinate={dropoffCoord} title={task?.type === 'ERRAND' ? 'Errand' : 'Dropoff'} pinColor={DROPOFF_COLOR} />
+          )}
+          {driverCoord && (
+            <Marker coordinate={driverCoord} title="Driver" pinColor={DRIVER_COLOR}>
+              <View style={s.driverMarker}>
+                <MaterialIcons name="pedal-bike" size={16} color="#fff" />
+              </View>
+            </Marker>
+          )}
+          {driverCoord && pickupCoord && (
+            <Polyline
+              coordinates={[driverCoord, pickupCoord]}
+              strokeColor="#2563EB"
+              strokeWidth={2.5}
+            />
+          )}
+          {pickupCoord && dropoffCoord && (
+            <Polyline
+              coordinates={[pickupCoord, dropoffCoord]}
+              strokeColor="#16A34A"
+              strokeWidth={3}
+            />
+          )}
+        </MapView>
       </View>
 
       {/* Back button */}
@@ -137,30 +234,50 @@ const TaskTrackingScreen = ({ route, navigation }) => {
               </View>
             </View>
 
+            {(() => {
+              const d = calcDistance(task.pickup_lat, task.pickup_lng, task.dropoff_lat, task.dropoff_lng);
+              return d !== null ? (
+                <View style={s.distRow}>
+                  <MaterialIcons name="place" size={16} color="#6B7280" />
+                  <Text style={s.distText}>{d} km</Text>
+                </View>
+              ) : null;
+            })()}
+
             <View style={s.divider} />
 
             <Text style={s.flowTitle}>Task Progress</Text>
-            <StatusFlow currentStatus={task.status} />
+            <StatusFlow currentStatus={task.status} taskType={task.type} />
 
-            {/* Needs approval CTA */}
-            {task.status === 'AWAITING_APPROVAL' && (
-              <TouchableOpacity
-                style={s.approveBtn}
-                onPress={() => navigation.navigate('TaskDetail', { taskId: task.id })}
-              >
-                <MaterialIcons name="pending-actions" size={18} color="#fff" />
-                <Text style={s.approveBtnText}>Approve Purchase</Text>
-              </TouchableOpacity>
+            {task.status === 'AWAITING_PAYMENT' && (
+              <View style={[s.completedRow, { backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A' }]}>
+                <MaterialIcons name="receipt" size={18} color="#D97706" />
+                <Text style={[s.completedText, { color: '#92400E' }]}>
+                  Final price: {task.final_price ? `${task.final_price} ETB` : 'Calculating...'}
+                </Text>
+              </View>
             )}
 
             {task.status === 'COMPLETED' && (
               <View style={s.completedRow}>
                 <MaterialIcons name="check-circle" size={18} color="#16A34A" />
                 <Text style={s.completedText}>Task completed successfully!</Text>
+                {task.final_price && (
+                  <Text style={[s.completedText, { color: '#111827', fontWeight: '700' }]}>
+                    {' — '}{task.final_price} ETB
+                  </Text>
+                )}
+                {alreadyRated && (
+                  <>
+                    <View style={{ flex: 1 }} />
+                    <MaterialIcons name="star" size={16} color="#F59E0B" />
+                    <Text style={s.ratedText}>You rated</Text>
+                  </>
+                )}
               </View>
             )}
 
-            {!['AWAITING_APPROVAL', 'COMPLETED', 'CANCELLED'].includes(task.status) && (
+            {!['AWAITING_PAYMENT', 'COMPLETED', 'CANCELLED'].includes(task.status) && (
               <View style={s.etaRow}>
                 <ActivityIndicator size="small" color="#16A34A" style={{ marginRight: 6 }} />
                 <Text style={s.etaText}>Updating every 10 seconds...</Text>
@@ -176,15 +293,8 @@ const TaskTrackingScreen = ({ route, navigation }) => {
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#E5E7EB' },
 
-  map: { flex: 1, backgroundColor: '#E8EEF4', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
-  gridLine: { position: 'absolute', backgroundColor: '#D1D9E0' },
-  gridH: { left: 0, right: 0, height: 1 },
-  gridV: { top: 0, bottom: 0, width: 1 },
-  mapCenter: { alignItems: 'center', gap: 8 },
-  mapPinOuter: { width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(22,163,74,0.15)', borderWidth: 2, borderColor: '#16A34A', justifyContent: 'center', alignItems: 'center' },
-  mapPinInner: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#16A34A' },
-  mapLabel: { fontSize: 16, fontWeight: '700', color: '#374151' },
-  mapSub: { fontSize: 12, color: '#9CA3AF' },
+  map: { flex: 1 },
+  driverMarker: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#2563EB', justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#fff' },
 
   backBtn: { position: 'absolute', left: 16, width: 40, height: 40, borderRadius: 20, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 4 },
 
@@ -197,6 +307,9 @@ const s = StyleSheet.create({
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusText: { fontSize: 12, fontWeight: '700' },
+
+  distRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16 },
+  distText: { fontSize: 13, color: '#6B7280', fontWeight: '600' },
 
   divider: { height: 1, backgroundColor: '#F3F4F6', marginBottom: 16 },
 
@@ -217,6 +330,8 @@ const s = StyleSheet.create({
 
   completedRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F0FDF4', borderRadius: 12, padding: 12 },
   completedText: { fontSize: 14, fontWeight: '600', color: '#16A34A' },
+
+  ratedText: { fontSize: 12, color: '#6B7280', fontWeight: '500' },
 
   etaRow: { flexDirection: 'row', alignItems: 'center' },
   etaText: { fontSize: 12, color: '#6B7280', fontWeight: '500' },

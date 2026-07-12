@@ -1,14 +1,15 @@
 from decimal import Decimal
 from django.db import transaction
 from customers.models import TaskTransaction, WalletTransaction
+from notifications.services import create_notification
 
 COMMISSION_RATE = Decimal('0.15')
-WAITING_FEE_PER_MINUTE = Decimal('1')  # 1 birr per minute
-GRACE_PERIOD_MINUTES = 10              # first 10 minutes free
+WAITING_FEE_PER_MINUTE = Decimal('0.5')  # 0.5 birr per minute (1 birr per 2 min)
+GRACE_PERIOD_MINUTES = 10                # first 10 minutes free
 
 
 def calculate_waiting_fee(task):
-    """1 birr per minute after the first 10 free minutes"""
+    """0.5 birr per minute after the first 10 free minutes"""
     if not task.waiting_started_at or not task.waiting_ended_at:
         return Decimal('0')
 
@@ -21,7 +22,7 @@ def calculate_waiting_fee(task):
 
 def calculate_final_price(task):
     """Calculate final price and commission base based on task type"""
-    estimated = Decimal(str(task.estimated_price))
+    estimated = Decimal(str(task.estimated_price)) if task.estimated_price is not None else Decimal('0')
 
     # DELIVERY or ERRAND+return_trip following SHOPPING workflow
     if task.type == 'DELIVERY':
@@ -46,20 +47,18 @@ def calculate_final_price(task):
 
 
 def validate_completion_status(task):
-    """Validate task is in correct status for completion based on type"""
-    if task.type == 'ERRAND' and not task.is_return_trip:
-        # Standard errand completes from PURCHASED
-        if task.status != 'PURCHASED':
-            raise ValueError(f"Errand task cannot be completed from status {task.status}")
-    else:
-        # DELIVERY and SHOPPING and ERRAND+return complete from DELIVERING
-        if task.status != 'DELIVERING':
-            raise ValueError(f"Task cannot be completed from status {task.status}")
+    """Validate task is in DELIVERING status for completion"""
+    if task.status != 'DELIVERING':
+        raise ValueError(f"Task cannot be completed from status {task.status}")
 
 
 @transaction.atomic
 def complete_task(task, driver_profile):
-    """Complete a task and handle all financial and driver state updates"""
+    """
+    Step 1 — Driver marks delivery as done.
+    Calculates final price, transitions to AWAITING_PAYMENT.
+    Customer sees the final price. Driver must then confirm payment.
+    """
 
     if task.driver != driver_profile:
         raise ValueError("You are not assigned to this task")
@@ -67,20 +66,77 @@ def complete_task(task, driver_profile):
     validate_completion_status(task)
 
     final_price, waiting_fee, commission_base = calculate_final_price(task)
-    commission = (commission_base * COMMISSION_RATE).quantize(Decimal('0.01'))
 
-    # FSM transition — sets completed_at automatically
-    task.complete_task()
+    # FSM transition to AWAITING_PAYMENT (not COMPLETED)
+    task.await_payment()
     task.final_price = final_price
     task.waiting_time_fee = waiting_fee
     task.save()
 
+    # Log task completion transaction
+    TaskTransaction.objects.create(
+        task=task,
+        actor=driver_profile.user,
+        type='TASK_COMPLETED',
+        amount=final_price,
+        metadata={
+            'estimated_price': str(task.estimated_price),
+            'waiting_fee': str(waiting_fee),
+            'item_cost': str(task.item_cost) if task.item_cost else '0',
+            'commission_base': str(commission_base),
+            'task_type': task.type,
+            'is_return_trip': task.is_return_trip,
+        }
+    )
+
+    # TODO: notify customer that delivery is done — show final price
+
+    create_notification(
+        task.user, 'PAYMENT_REQUIRED',
+        'Delivery complete',
+        f'Your {task.get_type_display().lower()} order has been delivered. Final price: {final_price} ETB.',
+    )
+    # TODO: prompt both driver and customer to rate each other
+
+    return {
+        'message': f'Task #{task.id} completed, awaiting payment',
+        'id': task.id,
+        'final_price': str(final_price),
+        'waiting_fee': str(waiting_fee),
+    }
+
+
+@transaction.atomic
+def confirm_payment(task, driver_profile):
+    """
+    Step 2 — Driver confirms cash payment received.
+    Transitions to COMPLETED, applies commission, frees driver.
+    """
+
+    if task.driver != driver_profile:
+        raise ValueError("You are not assigned to this task")
+
+    if task.status != 'AWAITING_PAYMENT':
+        raise ValueError(f"Task cannot be confirmed from status {task.status}")
+
+    # FSM transition to COMPLETED
+    task.complete_task()
+    task.save()
+
+    # Calculate commission from already-saved final_price
+    wait_fee = Decimal(str(task.waiting_time_fee or '0'))
+    item_cost = Decimal(str(task.item_cost or '0'))
+    commission_base = Decimal(str(task.final_price)) - item_cost
+    commission = (commission_base * COMMISSION_RATE).quantize(Decimal('0.01'))
+
     # Update driver
     driver = driver_profile
     driver.current_debt = Decimal(str(driver.current_debt)) + commission
+    earning = commission_base
+    driver.balance = Decimal(str(driver.balance)) + earning
     driver.is_available = True
     driver.total_tasks += 1
-    driver.save(update_fields=['current_debt', 'is_available', 'total_tasks'])
+    driver.save(update_fields=['current_debt', 'balance', 'is_available', 'total_tasks'])
 
     # Log commission as wallet transaction
     WalletTransaction.objects.create(
@@ -94,23 +150,30 @@ def complete_task(task, driver_profile):
         )
     )
 
-    # Log task completion transaction
+    # Log earning as wallet transaction
+    WalletTransaction.objects.create(
+        driver=driver_profile,
+        task=task,
+        type='EARNING',
+        amount=earning,
+        description=f'Earning for Task #{task.id} — delivery fee {earning} birr'
+    )
+
+    # Log payment confirmation transaction
     TaskTransaction.objects.create(
         task=task,
         actor=driver_profile.user,
-        type='TASK_COMPLETED',
-        amount=final_price,
+        type='PAYMENT_CONFIRMED',
+        amount=Decimal(str(task.final_price)),
         metadata={
-            'estimated_price': str(task.estimated_price),
-            'waiting_fee': str(waiting_fee),
-            'item_cost': str(task.item_cost) if task.item_cost else '0',
-            'commission_base': str(commission_base),
+            'final_price': str(task.final_price),
             'commission': str(commission),
             'task_type': task.type,
-            'is_return_trip': task.is_return_trip,
         }
     )
 
-    # TODO: notify customer that task is completed with final price
-    # TODO: notify driver of commission amount added to debt
-    # TODO: prompt both driver and customer to rate each other
+    create_notification(
+        task.user, 'TASK_COMPLETED',
+        'Payment confirmed',
+        f'Your {task.get_type_display().lower()} order is complete! Thank you for using Lucky.',
+    )

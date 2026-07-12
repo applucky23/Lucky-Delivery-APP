@@ -1,7 +1,15 @@
-from django.contrib import admin
+import logging
+from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.http import HttpResponseRedirect
+from django.shortcuts import render
 from django.utils.html import format_html
-from .models import User, DriverProfile, UserProfile, DriverLocation
+from django.utils import timezone
+from django.urls import reverse
+
+logger = logging.getLogger(__name__)
+from django.db.models import F
+from .models import User, DriverProfile, UserProfile, DriverLocation, CommissionPayment, WalletTransaction, Rating
 from django_admin_geomap import ModelAdmin as GeoModelAdmin
 
 
@@ -33,6 +41,7 @@ class UserAdmin(BaseUserAdmin):
 @admin.register(DriverProfile)
 class DriverProfileAdmin(admin.ModelAdmin):
     list_display = ('id', 'user', 'full_name', 'area', 'vehicle_type', 'status', 'is_available', 'is_verified', 'is_online', 'is_blocked', 'total_tasks')
+    list_editable = ('is_blocked',)
     list_filter = ('status', 'is_available', 'is_verified', 'is_online', 'is_blocked', 'vehicle_type', 'created_at')
     search_fields = ('user__phone_number', 'user__username', 'full_name', 'area')
     ordering = ('-created_at',)
@@ -46,7 +55,7 @@ class DriverProfileAdmin(admin.ModelAdmin):
         ('Dates', {'fields': ('created_at',)}),
     )
 
-    readonly_fields = ('email', 'created_at', 'is_blocked', 'id_image_preview', 'face_image_preview')
+    readonly_fields = ('email', 'created_at', 'id_image_preview', 'face_image_preview')
 
     def email(self, obj):
         return obj.user.email
@@ -130,3 +139,126 @@ class DriverLocationAdmin(GeoModelAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('driver__user')
+
+
+@admin.register(CommissionPayment)
+class CommissionPaymentAdmin(admin.ModelAdmin):
+    list_display = ('id', 'driver_link', 'amount', 'method', 'reference', 'screenshot_link', 'status', 'created_at', 'reviewed_at')
+    list_filter = ('status', 'method', 'created_at')
+    search_fields = ('driver__user__phone_number', 'driver__user__username', 'driver__full_name', 'reference')
+    ordering = ('-created_at',)
+    readonly_fields = ('created_at', 'reviewed_at', 'reviewed_by', 'screenshot_preview')
+    actions = ['confirm_payments', 'reject_payments']
+
+    fieldsets = (
+        ('Driver Info', {'fields': ('driver', 'amount', 'method', 'reference', 'status')}),
+        ('Review', {'fields': ('admin_note', 'reviewed_by', 'reviewed_at')}),
+        ('Files', {'fields': ('screenshot', 'screenshot_preview')}),
+        ('Driver Note', {'fields': ('note',)}),
+        ('Timestamps', {'fields': ('created_at',)}),
+    )
+
+    def driver_link(self, obj):
+        return format_html('<a href="{}">{}</a>',
+            reverse('admin:customers_driverprofile_change', args=[obj.driver.id]),
+            obj.driver.full_name or obj.driver.user.phone_number)
+    driver_link.short_description = 'Driver'
+
+    def screenshot_link(self, obj):
+        if obj.screenshot:
+            return format_html('<a href="{}" target="_blank">View</a>', obj.screenshot)
+        return '—'
+    screenshot_link.short_description = 'Screenshot'
+
+    def screenshot_preview(self, obj):
+        if obj.screenshot:
+            return format_html(
+                '<img src="{}" style="max-width: 300px; max-height: 200px; '
+                'border: 1px solid #ddd; border-radius: 4px;">',
+                obj.screenshot
+            )
+        return format_html('<span style="color: #999;">No screenshot uploaded</span>')
+    screenshot_preview.short_description = 'Preview'
+
+    def _reduce_debt(self, payment, user):
+        driver = payment.driver
+        DriverProfile.objects.filter(id=driver.id).update(
+            current_debt=F('current_debt') - payment.amount
+        )
+        logger.info(f'Reduced debt for driver #{driver.id} by {payment.amount}')
+        WalletTransaction.objects.create(
+            driver=driver,
+            type='DRIVER_PAYMENT',
+            amount=payment.amount,
+            description=f'Commission payment confirmed - ref: {payment.reference}'
+        )
+        return driver
+
+    def save_model(self, request, obj, form, change):
+        if change:
+            old = self.model.objects.get(pk=obj.pk)
+            if old.status != 'CONFIRMED' and obj.status == 'CONFIRMED':
+                self._reduce_debt(obj, request.user)
+                obj.reviewed_by = request.user
+                obj.reviewed_at = timezone.now()
+        super().save_model(request, obj, form, change)
+
+    def confirm_payments(self, request, queryset):
+        count = 0
+        for payment in queryset.filter(status='PENDING'):
+            self._reduce_debt(payment, request.user)
+            payment.status = 'CONFIRMED'
+            payment.reviewed_by = request.user
+            payment.reviewed_at = timezone.now()
+            payment.save(update_fields=['status', 'reviewed_by', 'reviewed_at'])
+            count += 1
+        self.message_user(request, f'{count} payment(s) confirmed and debt reduced.', messages.SUCCESS)
+    confirm_payments.short_description = 'Confirm selected payments'
+
+    def reject_payments(self, request, queryset):
+        if 'apply' in request.POST:
+            reason = request.POST.get('admin_note', '')
+            count = 0
+            for payment in queryset.filter(status='PENDING'):
+                payment.status = 'REJECTED'
+                payment.admin_note = reason
+                payment.reviewed_by = request.user
+                payment.reviewed_at = timezone.now()
+                payment.save(update_fields=['status', 'admin_note', 'reviewed_by', 'reviewed_at'])
+                count += 1
+            self.message_user(request, f'{count} payment(s) rejected.', messages.WARNING)
+            return HttpResponseRedirect(request.get_full_path())
+
+        return render(request, 'admin/commission_payment_reject.html', {
+            'payments': queryset.filter(status='PENDING'),
+            'action': 'reject_payments',
+            'opts': self.model._meta,
+        })
+    reject_payments.short_description = 'Reject selected payments'
+
+
+@admin.register(Rating)
+class RatingAdmin(admin.ModelAdmin):
+    list_display = ('id', 'task_link', 'from_user', 'to_user', 'rating', 'created_at')
+    list_filter = ('rating', 'created_at')
+    search_fields = ('task__id', 'from_user__username', 'to_user__username',
+                     'from_user__phone_number', 'to_user__phone_number')
+    readonly_fields = ('created_at',)
+    ordering = ('-created_at',)
+
+    fieldsets = (
+        ('Task', {'fields': ('task',)}),
+        ('Users', {'fields': ('from_user', 'to_user')}),
+        ('Rating', {'fields': ('rating', 'comment')}),
+        ('Timestamps', {'fields': ('created_at',)}),
+    )
+
+    def task_link(self, obj):
+        if obj.task:
+            return format_html(
+                '<a href="/admin/customers/task/{}/change/">#{} - {}</a>',
+                obj.task.id, obj.task.id, obj.task.get_type_display()
+            )
+        return '—'
+    task_link.short_description = 'Task'
+    task_link.allow_tags = True

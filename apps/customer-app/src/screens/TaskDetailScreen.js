@@ -1,25 +1,42 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  StatusBar, ActivityIndicator, Alert,
+  StatusBar, ActivityIndicator, Alert, Modal, TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import { getTask, cancelTask, approveTask } from '../services/authService';
+import { getTask, cancelTask, rateTask, getTaskRating } from '../services/authService';
 
 const STATUS_CONFIG = {
-  PENDING:           { label: 'Pending',        color: '#6B7280', bg: '#F3F4F6' },
-  ASSIGNED:          { label: 'Assigned',        color: '#2563EB', bg: '#EFF6FF' },
-  ARRIVED:           { label: 'Driver Arrived',  color: '#7C3AED', bg: '#F5F3FF' },
-  AWAITING_APPROVAL: { label: 'Needs Approval',  color: '#D97706', bg: '#FFFBEB' },
-  PURCHASED:         { label: 'Purchased',       color: '#0891B2', bg: '#ECFEFF' },
-  DELIVERING:        { label: 'Delivering',      color: '#EA580C', bg: '#FFF7ED' },
-  COMPLETED:         { label: 'Completed',       color: '#16A34A', bg: '#F0FDF4' },
-  CANCELLED:         { label: 'Cancelled',       color: '#DC2626', bg: '#FEF2F2' },
+  PENDING:           { label: 'Pending',           color: '#6B7280', bg: '#F3F4F6' },
+  ASSIGNED:          { label: 'Assigned',           color: '#2563EB', bg: '#EFF6FF' },
+  ARRIVED:           { label: 'Driver Arrived',     color: '#7C3AED', bg: '#F5F3FF' },
+  AWAITING_APPROVAL: { label: 'Needs Approval',     color: '#D97706', bg: '#FFFBEB' },
+  PURCHASED:         { label: 'Purchased',          color: '#0891B2', bg: '#ECFEFF' },
+  DELIVERING:        { label: 'Delivering',         color: '#EA580C', bg: '#FFF7ED' },
+  AWAITING_PAYMENT:  { label: 'Payment Pending',    color: '#D97706', bg: '#FFFBEB' },
+  COMPLETED:         { label: 'Completed',          color: '#16A34A', bg: '#F0FDF4' },
+  CANCELLED:         { label: 'Cancelled',          color: '#DC2626', bg: '#FEF2F2' },
 };
 
-const STATUS_STEPS  = ['PENDING', 'ASSIGNED', 'ARRIVED', 'AWAITING_APPROVAL', 'PURCHASED', 'DELIVERING', 'COMPLETED'];
-const STATUS_LABELS = ['Pending', 'Assigned', 'Arrived', 'Approval', 'Purchased', 'Delivering', 'Done'];
+const getStatusSteps = (type) => {
+  if (type === 'SHOPPING') return { steps: ['PENDING', 'ASSIGNED', 'ARRIVED', 'PURCHASED', 'DELIVERING', 'AWAITING_PAYMENT', 'COMPLETED'], labels: ['Pending', 'Assigned', 'Arrived', 'Purchased', 'Delivering', 'Payment', 'Done'] };
+  if (type === 'ERRAND') return { steps: ['PENDING', 'ASSIGNED', 'ARRIVED', 'AWAITING_PAYMENT', 'COMPLETED'], labels: ['Pending', 'Assigned', 'Arrived', 'Payment', 'Done'] };
+  return { steps: ['PENDING', 'ASSIGNED', 'ARRIVED', 'DELIVERING', 'AWAITING_PAYMENT', 'COMPLETED'], labels: ['Pending', 'Assigned', 'Arrived', 'Delivering', 'Payment', 'Done'] };
+};
+
+const cleanNote = (note) => {
+  if (!note) return '';
+  return note.split(' | ').filter(s => !s.includes(':')).join(' | ') || note;
+};
+
+const calcDistance = (lat1, lng1, lat2, lng2) => {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng/2)**2;
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)) * 100) / 100;
+};
 
 const TYPE_META = {
   DELIVERY: { icon: 'local-shipping', label: 'Pick & Drop' },
@@ -46,12 +63,24 @@ const TaskDetailScreen = ({ route, navigation }) => {
   const { taskId } = route.params;
   const [task, setTask]       = useState(null);
   const [loading, setLoading] = useState(true);
-  const [actioning, setActioning] = useState(null); // 'cancel' | 'approve'
+  const [actioning, setActioning] = useState(null); // 'cancel' | 'approve' | 'reject'
+  const [showRating, setShowRating] = useState(false);
+  const [starRating, setStarRating] = useState(0);
+  const [ratingComment, setRatingComment] = useState('');
+  const [ratingSubmitted, setRatingSubmitted] = useState(false);
+  const [alreadyRated, setAlreadyRated] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const data = await getTask(taskId);
-      if (data?.id) setTask(data);
+      if (data?.id) {
+        setTask(data);
+        if (data.status === 'COMPLETED') {
+          getTaskRating(taskId).then(res => {
+            if (res?.id) setAlreadyRated(true);
+          }).catch(() => {});
+        }
+      }
     } catch (err) {
       console.warn('[TaskDetail]', err.message);
     } finally {
@@ -88,22 +117,7 @@ const TaskDetailScreen = ({ route, navigation }) => {
     ]);
   };
 
-  const handleApprove = async () => {
-    setActioning('approve');
-    try {
-      const res = await approveTask(taskId);
-      if (res?.id) {
-        setTask(res);
-        Alert.alert('Approved!', 'The driver will now start the delivery.');
-      } else {
-        Alert.alert('Error', res?.error || 'Could not approve.');
-      }
-    } catch (err) {
-      Alert.alert('Error', err.message);
-    } finally {
-      setActioning(null);
-    }
-  };
+
 
   if (loading) return (
     <View style={[s.container, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
@@ -119,10 +133,11 @@ const TaskDetailScreen = ({ route, navigation }) => {
 
   const cfg      = STATUS_CONFIG[task.status] || STATUS_CONFIG.PENDING;
   const meta     = TYPE_META[task.type] || TYPE_META.ERRAND;
+  const { steps: STATUS_STEPS, labels: STATUS_LABELS } = getStatusSteps(task.type);
   const stepIdx  = STATUS_STEPS.indexOf(task.status);
   const isActive = !['COMPLETED', 'CANCELLED'].includes(task.status);
   const canCancel  = ['PENDING', 'ASSIGNED'].includes(task.status);
-  const canApprove = task.status === 'AWAITING_APPROVAL';
+
 
   return (
     <View style={[s.container, { paddingTop: insets.top }]}>
@@ -182,8 +197,9 @@ const TaskDetailScreen = ({ route, navigation }) => {
         {/* Task info */}
         <SectionCard title="Task Info">
           <InfoRow label="Type"     value={meta.label} />
-          <InfoRow label="Note"     value={task.note} />
-          <InfoRow label="Distance" value={task.estimated_distance_km ? `${task.estimated_distance_km} km` : null} />
+          {task.item_size && <InfoRow label="Package" value={task.item_size.replace('_', ' ').replace('up to', 'Up to')} />}
+          <InfoRow label="Note"     value={cleanNote(task.note)} />
+          <InfoRow label="Distance" value={task.estimated_distance_km ? `${task.estimated_distance_km} km` : `${calcDistance(task.pickup_lat, task.pickup_lng, task.dropoff_lat, task.dropoff_lng)} km`} />
           <InfoRow label="Created"  value={task.created_at ? new Date(task.created_at).toLocaleString() : null} last />
         </SectionCard>
 
@@ -194,8 +210,8 @@ const TaskDetailScreen = ({ route, navigation }) => {
               <MaterialIcons name="trip-origin" size={16} color="#16A34A" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={s.locationLabel}>Pickup</Text>
-              <Text style={s.locationAddress}>{task.pickup_lat}, {task.pickup_lng}</Text>
+               <Text style={s.locationLabel}>Pickup</Text>
+              <Text style={s.locationAddress}>{task.pickup_address || `${task.pickup_lat}, ${task.pickup_lng}`}</Text>
             </View>
           </View>
           <View style={s.locationDivider} />
@@ -204,8 +220,8 @@ const TaskDetailScreen = ({ route, navigation }) => {
               <MaterialIcons name="place" size={16} color="#2563EB" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={s.locationLabel}>Dropoff</Text>
-              <Text style={s.locationAddress}>{task.dropoff_lat}, {task.dropoff_lng}</Text>
+               <Text style={s.locationLabel}>Dropoff</Text>
+              <Text style={s.locationAddress}>{task.dropoff_address || `${task.dropoff_lat}, ${task.dropoff_lng}`}</Text>
             </View>
           </View>
         </SectionCard>
@@ -218,7 +234,7 @@ const TaskDetailScreen = ({ route, navigation }) => {
                 <MaterialIcons name="person" size={22} color="#fff" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={s.driverName}>{task.driver}</Text>
+                <Text style={s.driverName}>{task.driver_name}</Text>
                 <View style={[s.driverBadge, { backgroundColor: cfg.bg }]}>
                   <Text style={[s.driverBadgeText, { color: cfg.color }]}>{cfg.label}</Text>
                 </View>
@@ -229,23 +245,18 @@ const TaskDetailScreen = ({ route, navigation }) => {
 
         {/* Pricing */}
         <SectionCard title="Pricing">
+          <InfoRow label="Distance" value={task.estimated_distance_km ? `${task.estimated_distance_km} km` : null} />
           <InfoRow label="Estimated Price" value={task.estimated_price ? `${task.estimated_price} ETB` : null} />
+          {task.item_cost != null && (
+            <InfoRow label="Item Cost" value={`${task.item_cost} ETB`} />
+          )}
           <InfoRow label="Final Price"     value={task.final_price ? `${task.final_price} ETB` : null} last />
         </SectionCard>
 
-        {/* Approve banner */}
-        {canApprove && (
-          <View style={s.approveBanner}>
-            <MaterialIcons name="pending-actions" size={20} color="#D97706" />
-            <Text style={s.approveBannerText}>
-              The driver has completed the purchase. Please review and approve to continue.
-            </Text>
-          </View>
-        )}
       </ScrollView>
 
       {/* Bottom action bar */}
-      {(canApprove || canCancel || isActive) && (
+      {(canCancel || isActive) && (
         <View style={[s.bottomBar, { paddingBottom: insets.bottom || 16 }]}>
           {canCancel && (
             <TouchableOpacity
@@ -260,23 +271,7 @@ const TaskDetailScreen = ({ route, navigation }) => {
             </TouchableOpacity>
           )}
 
-          {canApprove && (
-            <TouchableOpacity
-              style={[s.btnApprove, actioning === 'approve' && { opacity: 0.6 }]}
-              onPress={handleApprove}
-              disabled={!!actioning}
-            >
-              {actioning === 'approve'
-                ? <ActivityIndicator color="#fff" size="small" />
-                : <>
-                    <MaterialIcons name="check-circle" size={18} color="#fff" />
-                    <Text style={s.btnApproveText}>Approve Purchase</Text>
-                  </>
-              }
-            </TouchableOpacity>
-          )}
-
-          {isActive && !canApprove && (
+          {isActive && (
             <TouchableOpacity
               style={s.btnTrack}
               onPress={() => navigation.navigate('TaskTracking', { taskId: task.id })}
@@ -287,6 +282,81 @@ const TaskDetailScreen = ({ route, navigation }) => {
           )}
         </View>
       )}
+
+      {task.status === 'COMPLETED' && !ratingSubmitted && !alreadyRated && (
+        <View style={[s.bottomBar, { paddingBottom: insets.bottom || 16 }]}>
+          <TouchableOpacity style={s.btnRate} onPress={() => setShowRating(true)}>
+            <MaterialIcons name="star" size={18} color="#fff" />
+            <Text style={s.btnRateText}>Rate Driver</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {task.status === 'COMPLETED' && (ratingSubmitted || alreadyRated) && (
+        <View style={[s.bottomBar, { paddingBottom: insets.bottom || 16, justifyContent: 'center' }]}>
+          <MaterialIcons name="star" size={18} color="#F59E0B" />
+          <Text style={{ fontSize: 14, color: '#6B7280', fontWeight: '500' }}>You rated this driver</Text>
+        </View>
+      )}
+
+      {/* Rating modal */}
+      <Modal visible={showRating} transparent animationType="fade">
+        <View style={s.modalOverlay}>
+          <View style={s.modalCard}>
+            <Text style={s.modalTitle}>Rate Your Driver</Text>
+            {task?.driver_name ? (
+              <Text style={s.modalDriver}>{task.driver_name}</Text>
+            ) : null}
+
+            <View style={s.starRow}>
+              {[1, 2, 3, 4, 5].map(n => (
+                <TouchableOpacity key={n} onPress={() => setStarRating(n)}>
+                  <MaterialIcons
+                    name={n <= starRating ? 'star' : 'star-outline'}
+                    size={36}
+                    color={n <= starRating ? '#F59E0B' : '#D1D5DB'}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TextInput
+              style={s.commentInput}
+              placeholder="Optional comment..."
+              placeholderTextColor="#9CA3AF"
+              value={ratingComment}
+              onChangeText={setRatingComment}
+              multiline
+              maxLength={500}
+            />
+
+            <View style={s.modalActions}>
+              <TouchableOpacity
+                style={s.skipBtn}
+                onPress={() => setShowRating(false)}
+              >
+                <Text style={s.skipBtnText}>Skip</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.submitBtn, starRating === 0 && { opacity: 0.5 }]}
+                onPress={async () => {
+                  if (starRating === 0) return;
+                  try {
+                    await rateTask(taskId, starRating, ratingComment);
+                    setRatingSubmitted(true);
+                    setShowRating(false);
+                  } catch (e) {
+                    Alert.alert('Error', e.message || 'Could not submit rating.');
+                  }
+                }}
+                disabled={starRating === 0}
+              >
+                <Text style={s.submitBtnText}>Submit</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -340,10 +410,28 @@ const s = StyleSheet.create({
   bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingTop: 12, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#F3F4F6', shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 10 },
   btnSecondary: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 14, paddingVertical: 14, borderWidth: 1.5, borderColor: '#FCA5A5', backgroundColor: '#FEF2F2' },
   btnSecondaryText: { color: '#DC2626', fontSize: 14, fontWeight: '700' },
+  btnReject: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 14, paddingVertical: 14, borderWidth: 1.5, borderColor: '#FCA5A5', backgroundColor: '#FEF2F2' },
+  btnRejectText: { color: '#DC2626', fontSize: 14, fontWeight: '700' },
   btnApprove: { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#16A34A', borderRadius: 14, paddingVertical: 14 },
   btnApproveText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   btnTrack: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#16A34A', borderRadius: 14, paddingVertical: 14 },
   btnTrackText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+
+  btnRate: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#F59E0B', borderRadius: 14, paddingVertical: 14 },
+  btnRateText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+
+  // Rating modal
+  modalOverlay:  { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 32 },
+  modalCard:     { backgroundColor: '#fff', borderRadius: 24, padding: 28, width: '100%', maxWidth: 340, gap: 18, alignItems: 'center' },
+  modalTitle:    { fontSize: 20, fontWeight: '800', color: '#111827', textAlign: 'center' },
+  modalDriver:   { fontSize: 14, color: '#6B7280', textAlign: 'center', marginTop: -8 },
+  starRow:       { flexDirection: 'row', gap: 6 },
+  commentInput:  { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, padding: 12, fontSize: 14, color: '#111827', width: '100%', minHeight: 60, textAlignVertical: 'top', backgroundColor: '#FAFAFA' },
+  modalActions:  { flexDirection: 'row', gap: 12, width: '100%' },
+  skipBtn:       { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FAFAFA' },
+  skipBtnText:   { fontSize: 15, fontWeight: '600', color: '#374151' },
+  submitBtn:     { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 12, backgroundColor: '#F59E0B' },
+  submitBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });
 
 export default TaskDetailScreen;

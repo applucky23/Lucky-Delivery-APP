@@ -1,0 +1,325 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}Analytics Dashboard{% endblock %}
+
+{% block extrastyle %}
+<style>
+  :root {
+    --card-bg: #fff;
+    --card-radius: 12px;
+    --card-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    --border: #e5e7eb;
+  }
+  * { box-sizing: border-box; }
+  body.dashboard { background: #f3f4f6; }
+  #content { padding: 24px; max-width: 1400px; margin: 0 auto; }
+  h1 { font-size: 24px; font-weight: 700; color: #111827; margin: 0 0 24px; display: flex; align-items: center; gap: 12px; }
+  .section-title { font-size: 14px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin: 32px 0 16px; }
+  .grid { display: grid; gap: 16px; }
+  .grid-4 { grid-template-columns: repeat(4, 1fr); }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid-2 { grid-template-columns: repeat(2, 1fr); }
+  .card { background: var(--card-bg); border-radius: var(--card-radius); box-shadow: var(--card-shadow); border: 1px solid var(--border); overflow: hidden; }
+  .card-body { padding: 20px; }
+  .kpi-label { font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .kpi-value { font-size: 28px; font-weight: 800; color: #111827; line-height: 1; }
+  .kpi-sub { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+  .kpi-green { color: #16a34a; }
+  .kpi-blue { color: #2563eb; }
+  .kpi-amber { color: #d97706; }
+  .chart-container { position: relative; height: 260px; }
+  .chart-container canvas { width: 100% !important; height: 100% !important; }
+  .table-wrap { overflow-x: auto; }
+  table.analytics { width: 100%; border-collapse: collapse; }
+  table.analytics th { font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; text-align: left; padding: 10px 14px; border-bottom: 2px solid var(--border); }
+  table.analytics td { font-size: 13px; color: #374151; padding: 10px 14px; border-bottom: 1px solid #f3f4f6; }
+  table.analytics tr:last-child td { border-bottom: none; }
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .badge-online { background: #dcfce7; color: #166534; }
+  .badge-offline { background: #f3f4f6; color: #6b7280; }
+  .full { grid-column: 1 / -1; }
+  @media (max-width: 900px) { .grid-4 { grid-template-columns: repeat(2, 1fr); } .grid-3 { grid-template-columns: 1fr; } .grid-2 { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+  Analytics Dashboard
+</h1>
+
+{# ─── DRIVER EARNINGS SECTION ───#}
+<div class="section-title">Driver Earnings (delivery fee + waiting fee, before commission)</div>
+<div class="grid grid-4">
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Today</div>
+    <div class="kpi-value kpi-green">{{ rev_today }} ETB</div>
+  </div></div>
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">This Week</div>
+    <div class="kpi-value kpi-blue">{{ rev_week }} ETB</div>
+  </div></div>
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">This Month</div>
+    <div class="kpi-value">{{ rev_month }} ETB</div>
+  </div></div>
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Lifetime</div>
+    <div class="kpi-value">{{ rev_lifetime }} ETB</div>
+  </div></div>
+</div>
+
+<div class="section-title" style="margin-top:16px">Company Commission</div>
+<div class="grid grid-4">
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Today</div>
+    <div class="kpi-value kpi-green">{{ commission_today }} ETB</div>
+  </div></div>
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">This Week</div>
+    <div class="kpi-value kpi-blue">{{ commission_week }} ETB</div>
+  </div></div>
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">This Month</div>
+    <div class="kpi-value kpi-amber">{{ commission_month }} ETB</div>
+  </div></div>
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Lifetime</div>
+    <div class="kpi-value">{{ commission_lifetime }} ETB</div>
+  </div></div>
+</div>
+
+<div class="grid grid-2" style="margin-top:16px">
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Average Task Value (driver earnings)</div>
+    <div class="kpi-value">{{ avg_task_value }} ETB</div>
+  </div></div>
+</div>
+
+<div class="grid grid-2" style="margin-top:16px">
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Driver Earnings by Type</div>
+    <div class="chart-container"><canvas id="revByTypeChart"></canvas></div>
+  </div></div>
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Driver Earnings per Day (30 days)</div>
+    <div class="chart-container"><canvas id="revPerDayChart"></canvas></div>
+  </div></div>
+</div>
+
+<div class="grid grid-2" style="margin-top:16px">
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Waiting Fee Contribution</div>
+    <div class="kpi-value">{{ waiting_fee_total }} ETB</div>
+    <div class="kpi-sub">{{ waiting_fee_pct }}% of driver earnings</div>
+  </div></div>
+</div>
+
+{# ─── TASKS SECTION ───#}
+<div class="section-title">Tasks</div>
+<div class="grid grid-4">
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Today</div>
+    <div class="kpi-value kpi-green">{{ total_tasks_today }}</div>
+  </div></div>
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">This Week</div>
+    <div class="kpi-value kpi-blue">{{ total_tasks_week }}</div>
+  </div></div>
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">This Month</div>
+    <div class="kpi-value">{{ total_tasks_month }}</div>
+  </div></div>
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Lifetime</div>
+    <div class="kpi-value">{{ total_tasks_lifetime }}</div>
+  </div></div>
+</div>
+
+<div class="grid grid-3" style="margin-top:16px">
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Completed</div>
+    <div class="kpi-value kpi-green">{{ completed_count }}</div>
+  </div></div>
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Cancelled</div>
+    <div class="kpi-value" style="color:#dc2626">{{ cancelled_count }}</div>
+  </div></div>
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Completion Rate</div>
+    <div class="kpi-value kpi-blue">{{ completion_rate }}%</div>
+  </div></div>
+</div>
+
+<div class="grid grid-3" style="margin-top:16px">
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Status Breakdown</div>
+    <div class="chart-container"><canvas id="statusChart"></canvas></div>
+  </div></div>
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Tasks per Day (30 days)</div>
+    <div class="chart-container"><canvas id="tasksPerDayChart"></canvas></div>
+  </div></div>
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Peak Hours (last 30 days)</div>
+    <div class="chart-container"><canvas id="peakHoursChart"></canvas></div>
+  </div></div>
+</div>
+
+<div class="grid grid-2" style="margin-top:16px">
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Cancellation Rate by Type</div>
+    <div class="chart-container"><canvas id="cancelByTypeChart"></canvas></div>
+  </div></div>
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Order Type Popularity</div>
+    <div class="chart-container"><canvas id="typePopChart"></canvas></div>
+  </div></div>
+</div>
+
+{# ─── DRIVERS ───#}
+<div class="section-title">Drivers</div>
+<div class="grid grid-2">
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Online Now</div>
+    <div class="kpi-value kpi-green">{{ active_drivers }}</div>
+    <div class="kpi-sub">of {{ total_drivers }} total</div>
+  </div></div>
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Top 10 Drivers</div>
+    <div class="table-wrap" style="margin-top:8px">
+      <table class="analytics">
+        <thead><tr><th>#</th><th>Name</th><th>Vehicle</th><th>Tasks</th><th>Balance</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for d in top_drivers %}
+          <tr>
+            <td>{{ forloop.counter }}</td>
+            <td>{{ d.full_name }}</td>
+            <td>{{ d.vehicle_type|title }}</td>
+            <td>{{ d.total_tasks }}</td>
+            <td>{{ d.balance }} ETB</td>
+            <td>{% if d.is_online %}<span class="badge badge-online">Online</span>{% else %}<span class="badge badge-offline">Offline</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div></div>
+</div>
+
+{# ─── CUSTOMERS ───#}
+<div class="section-title">Customers</div>
+<div class="grid grid-4">
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Total Registered</div>
+    <div class="kpi-value">{{ total_customers }}</div>
+  </div></div>
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Active (ordered in 30d)</div>
+    <div class="kpi-value kpi-green">{{ active_customers }}</div>
+  </div></div>
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">New This Month</div>
+    <div class="kpi-value kpi-blue">{{ new_customers }}</div>
+  </div></div>
+  <div class="card"><div class="card-body">
+    <div class="kpi-label">Repeat (&gt;1 order)</div>
+    <div class="kpi-value">{{ repeat_customers }}</div>
+  </div></div>
+</div>
+
+{% endblock %}
+
+{% block extrajs %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  const k = (id) => document.getElementById(id);
+  const labels = (arr, key) => arr.map(x => x[key]);
+  const values = (arr, key) => arr.map(x => x[key]);
+  const COLORS = ['#22c55e','#2563eb','#d97706','#dc2626','#8b5cf6','#ec4899','#06b6d4','#f59e0b'];
+
+  // Helper: parse JSON from script tags
+  const getJSON = (id) => JSON.parse(document.getElementById(id).textContent);
+
+  // We pass JSON in data attributes — let's embed them in hidden script tags
+  const DATA = {
+    revByType: JSON.parse('{{ rev_by_type_json|safe }}'),
+    statusBreakdown: JSON.parse('{{ status_breakdown_json|safe }}'),
+    cancelByType: JSON.parse('{{ cancel_rate_by_type_json|safe }}'),
+    peakHours: JSON.parse('{{ peak_hours_json|safe }}'),
+    tasksPerDay: JSON.parse('{{ tasks_per_day_json|safe }}'),
+    revPerDay: JSON.parse('{{ rev_per_day_json|safe }}'),
+    topDrivers: JSON.parse('{{ top_drivers_json|safe }}'),
+    mostOrderedType: JSON.parse('{{ most_ordered_type_json|safe }}'),
+  };
+
+  new Chart(k('revByTypeChart'), {
+    type: 'doughnut',
+    data: {
+      labels: labels(DATA.revByType, 'type'),
+      datasets: [{ data: values(DATA.revByType, 'total'), backgroundColor: COLORS }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+  });
+
+  new Chart(k('revPerDayChart'), {
+    type: 'line',
+    data: {
+      labels: labels(DATA.revPerDay, 'date'),
+      datasets: [{ label: 'Driver Earnings (ETB)', data: values(DATA.revPerDay, 'total'), borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.08)', fill: true, tension: 0.3 }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { maxTicksLimit: 10 } } } }
+  });
+
+  new Chart(k('statusChart'), {
+    type: 'doughnut',
+    data: {
+      labels: labels(DATA.statusBreakdown, 'status'),
+      datasets: [{ data: values(DATA.statusBreakdown, 'count'), backgroundColor: COLORS }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+  });
+
+  new Chart(k('cancelByTypeChart'), {
+    type: 'bar',
+    data: {
+      labels: labels(DATA.cancelByType, 'type'),
+      datasets: [
+        { label: 'Total', data: values(DATA.cancelByType, 'total'), backgroundColor: '#2563eb' },
+        { label: 'Cancelled', data: values(DATA.cancelByType, 'cancelled'), backgroundColor: '#dc2626' },
+      ]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+  });
+
+  new Chart(k('peakHoursChart'), {
+    type: 'bar',
+    data: {
+      labels: values(DATA.peakHours, 'hour').map(h => h + ':00'),
+      datasets: [{ label: 'Tasks', data: values(DATA.peakHours, 'count'), backgroundColor: '#d97706' }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+  });
+
+  new Chart(k('tasksPerDayChart'), {
+    type: 'bar',
+    data: {
+      labels: labels(DATA.tasksPerDay, 'date'),
+      datasets: [{ label: 'Tasks', data: values(DATA.tasksPerDay, 'count'), backgroundColor: '#22c55e' }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { maxTicksLimit: 10 } }, y: { beginAtZero: true, ticks: { precision: 0 } } } }
+  });
+
+  new Chart(k('typePopChart'), {
+    type: 'doughnut',
+    data: {
+      labels: labels(DATA.mostOrderedType, 'type'),
+      datasets: [{ data: values(DATA.mostOrderedType, 'count'), backgroundColor: COLORS }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+  });
+})();
+</script>
+{% endblock %}

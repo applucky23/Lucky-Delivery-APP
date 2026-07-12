@@ -97,6 +97,7 @@ class DriverProfile(models.Model):
     debt_limit   = models.DecimalField(max_digits=10, decimal_places=2, default=300)
     total_tasks  = models.PositiveIntegerField(default=0)
     created_at   = models.DateTimeField(auto_now_add=True)
+    balance      = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     is_online    = models.BooleanField(default=False)
     is_blocked   = models.BooleanField(default=False)
 
@@ -104,17 +105,23 @@ class DriverProfile(models.Model):
         return f"Driver: {self.user.username}"
 
     def save(self, *args, **kwargs):
-        self.is_blocked  = self.current_debt >= self.debt_limit
         self.is_verified = self.status == 'APPROVED'
         super().save(*args, **kwargs)
 
 
 class Task(models.Model):
     TYPE_CHOICES = [('DELIVERY', 'Delivery'), ('SHOPPING', 'Shopping'), ('ERRAND', 'Errand')]
+    PRIORITY_CHOICES = [('normal', 'Normal'), ('urgent', 'Urgent')]
+    ITEM_SIZE_CHOICES = [
+        ('up_to_2kg', 'Up to 2kg'),
+        ('up_to_6kg', 'Up to 6kg'),
+        ('up_to_10kg', 'Up to 10kg'),
+    ]
     STATUS_CHOICES = [
         ('PENDING', 'Pending'), ('ASSIGNED', 'Assigned'), ('ARRIVED', 'Arrived'),
         ('AWAITING_APPROVAL', 'Awaiting Approval'), ('PURCHASED', 'Purchased'),
-        ('DELIVERING', 'Delivering'), ('COMPLETED', 'Completed'), ('CANCELLED', 'Cancelled'),
+        ('DELIVERING', 'Delivering'), ('AWAITING_PAYMENT', 'Awaiting Payment'),
+        ('COMPLETED', 'Completed'), ('CANCELLED', 'Cancelled'),
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='tasks')
@@ -125,6 +132,9 @@ class Task(models.Model):
     pickup_lng = models.DecimalField(max_digits=9, decimal_places=6)
     dropoff_lat = models.DecimalField(max_digits=9, decimal_places=6)
     dropoff_lng = models.DecimalField(max_digits=9, decimal_places=6)
+
+    pickup_address = models.CharField(max_length=500, blank=True, default='')
+    dropoff_address = models.CharField(max_length=500, blank=True, default='')
 
     estimated_distance_km = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
     estimated_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
@@ -138,18 +148,23 @@ class Task(models.Model):
     status = FSMField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
 
     arrived_at_location_at = models.DateTimeField(null=True, blank=True)
+    arrived_at_dropoff_at = models.DateTimeField(null=True, blank=True)
     waiting_started_at = models.DateTimeField(null=True, blank=True)
     waiting_ended_at = models.DateTimeField(null=True, blank=True)
 
     is_price_confirmed = models.BooleanField(default=False)
     is_return_trip     = models.BooleanField(default=False)
 
-    is_return_trip = models.BooleanField(default=False)
-
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 
     note = models.TextField(blank=True)
+    item_size = models.CharField(max_length=10, choices=ITEM_SIZE_CHOICES, blank=True, null=True)
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='normal')
+
+    dispatch_attempts = models.IntegerField(default=0)
+    auto_dispatch_exhausted = models.BooleanField(default=False)
+    auto_cancel_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"Task #{self.id} [{self.type}] - {self.status}"
@@ -173,7 +188,7 @@ class Task(models.Model):
     def request_approval(self):
         pass
 
-    @transition(field=status, source='AWAITING_APPROVAL', target='PURCHASED')
+    @transition(field=status, source=['ARRIVED', 'AWAITING_APPROVAL'], target='PURCHASED')
     def approve_purchase(self):
         self.is_price_confirmed = True
 
@@ -181,11 +196,15 @@ class Task(models.Model):
     def start_delivery(self):
         pass
 
-    @transition(field=status, source=['DELIVERING', 'PURCHASED'], target='COMPLETED')
+    @transition(field=status, source='DELIVERING', target='AWAITING_PAYMENT')
+    def await_payment(self):
+        pass
+
+    @transition(field=status, source='AWAITING_PAYMENT', target='COMPLETED')
     def complete_task(self):
         self.completed_at = timezone.now()
 
-    @transition(field=status, source=['PENDING', 'ASSIGNED', 'ARRIVED', 'AWAITING_APPROVAL', 'PURCHASED', 'DELIVERING'], target='CANCELLED')
+    @transition(field=status, source=['PENDING', 'ASSIGNED', 'ARRIVED', 'AWAITING_APPROVAL', 'PURCHASED', 'DELIVERING', 'AWAITING_PAYMENT'], target='CANCELLED')
     def cancel_task(self):
         pass
 
@@ -259,7 +278,7 @@ class TaskTransaction(models.Model):
 
 class WalletTransaction(models.Model):
     TYPE_CHOICES = [
-        ('COMMISSION', 'Commission'), ('DRIVER_PAYMENT', 'Driver Payment'),
+        ('COMMISSION', 'Commission'), ('EARNING', 'Earning'), ('DRIVER_PAYMENT', 'Driver Payment'),
     ]
 
     driver = models.ForeignKey(DriverProfile, on_delete=models.CASCADE, related_name='wallet_transactions')
@@ -282,6 +301,7 @@ class TaskProof(models.Model):
     extracted_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     driver_reported_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     is_flagged = models.BooleanField(default=False)
+    ocr_failed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     verified = models.BooleanField(default=False)
     verified_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL)
@@ -356,3 +376,27 @@ class PaymentRecord(models.Model):
         indexes = [
             models.Index(fields=['reference']),
         ]
+
+
+class CommissionPayment(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending Review'),
+        ('CONFIRMED', 'Confirmed'),
+        ('REJECTED', 'Rejected'),
+        ('CANCELLED', 'Cancelled'),
+    ]
+
+    driver      = models.ForeignKey(DriverProfile, on_delete=models.CASCADE, related_name='commission_payments')
+    amount      = models.DecimalField(max_digits=10, decimal_places=2)
+    method      = models.CharField(max_length=10)          # TELEBIRR or CBE
+    reference   = models.CharField(max_length=100)
+    screenshot  = models.URLField(null=True, blank=True)
+    note        = models.TextField(blank=True)
+    status      = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
+    admin_note  = models.TextField(blank=True)
+    reviewed_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL)
+    created_at  = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.driver} - {self.amount} [{self.status}]"

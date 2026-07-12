@@ -218,9 +218,9 @@ class TaskProofAdmin(ImportExportModelAdmin):
     resource_class = TaskProofResource
     list_display = (
         'id','task_link', 'proof_type_badge', 'amount_comparison',
-        'verification_status', 'created_at', 'preview_image','is_flagged'
+        'verification_status', 'ocr_failed', 'created_at', 'preview_image'
     )
-    list_filter = ('type', 'is_flagged', 'verified', ('created_at', DateRangeFilter))
+    list_filter = ('type', 'is_flagged', 'ocr_failed', 'verified', ('created_at', DateRangeFilter))
     search_fields = ('task__id', 'task__user__username', 'task__driver__user__username')
     ordering = ('-created_at',)
     readonly_fields = ('created_at', 'preview_image_admin')
@@ -233,7 +233,7 @@ class TaskProofAdmin(ImportExportModelAdmin):
             'fields': ('extracted_amount', 'driver_reported_amount')
         }),
         ('Verification', {
-            'fields': ('is_flagged', 'verified', 'verified_by')
+            'fields': ('is_flagged', 'ocr_failed', 'verified', 'verified_by')
         }),
         ('Timestamps', {
             'fields': ('created_at',)
@@ -262,6 +262,10 @@ class TaskProofAdmin(ImportExportModelAdmin):
     proof_type_badge.allow_tags = True
 
     def amount_comparison(self, obj):
+        if obj.ocr_failed:
+            return format_html(
+                '<span style="color: #f59e0b;">⚠ OCR Failed — manual review needed</span>'
+            )
         if obj.extracted_amount and obj.driver_reported_amount:
             diff = obj.extracted_amount - obj.driver_reported_amount
             if abs(diff) < 0.01:
@@ -289,7 +293,9 @@ class TaskProofAdmin(ImportExportModelAdmin):
                 '<span style="color: #28a745;">✓ Verified by {}</span>',
                 verified_by
             )
-        elif obj.is_flagged:
+        if obj.ocr_failed:
+            return mark_safe('<span style="color: #f59e0b;">⚠ OCR Failed</span>')
+        if obj.is_flagged:
             return mark_safe('<span style="color: #dc3545;">⚠ Flagged</span>')
         return mark_safe('<span style="color: #ffc107;">Pending</span>')
     verification_status.short_description = 'Status'

@@ -5,6 +5,23 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+VEHICLE_TIER = {
+    'ON_FOOT': 0,
+    'BICYCLE': 1,
+    'MOTORCYCLE': 2,
+    'CAR': 2,
+    'MINI_TRUCK': 2,
+}
+
+FOOT = 0
+BIKE = 2
+
+TIER_MAX_TASK_KM = {
+    0: 1.5,   # foot: max 1.5 km task distance
+    1: 5.0,   # bicycle: max 5 km task distance
+    2: 999,   # motorcycle / car: any distance
+}
+
 
 def haversine_distance(lat1, lon1, lat2, lon2):
     # TODO: Replace haversine Python loop with PostGIS geo queries for production scaling
@@ -73,71 +90,66 @@ def find_nearby_drivers(pickup_lat, pickup_lng, max_distance_km=10, limit=5):
 
 def find_best_drivers_for_task(task, max_distance_km=10, limit=5):
     """
-    Find the best drivers for a specific task
-    
-    Args:
-        task (Task): The task to find drivers for
-        max_distance_km (int): Maximum distance to search
-        limit (int): Maximum number of drivers to return
-    
-    Returns:
-        list: List of DriverProfile objects sorted by suitability
+    Find the best drivers for a specific task, filtering by vehicle type
+    hard limits based on task.estimated_distance_km (pickup → dropoff).
+
+    Vehicle max task distances:
+      Foot       ≤ 1.5 km
+      Bicycle    ≤ 5 km
+      Motorcycle   any
     """
     try:
-        # Get nearby drivers based on pickup location
+        task_distance_km = task.estimated_distance_km or 0
+
         nearby_drivers_data = find_nearby_drivers(
             float(task.pickup_lat), 
             float(task.pickup_lng),
             max_distance_km,
-            limit * 2  # Get more drivers initially for better selection
+            limit * 2
         )
-        
-        # Score drivers based on multiple factors
-        scored_drivers = []
+
+        if not nearby_drivers_data:
+            return []
+
+        eligible = []
         for driver_data in nearby_drivers_data:
             driver = driver_data['driver']
-            distance = driver_data['distance']
+            t = VEHICLE_TIER.get(driver.vehicle_type, BIKE)
+            max_task_km = TIER_MAX_TASK_KM.get(t, 5.0)
+            if task_distance_km > max_task_km:
+                continue
+            eligible.append(driver_data)
+
+        if not eligible:
+            return []
+
+        scored = []
+        for d in eligible:
+            driver = d['driver']
+            dist = d['distance']
             score = 0
-            
-            # Distance score (closer is better)
-            if distance < 2:
+            if dist < 2:
                 score += 50
-            elif distance < 5:
+            elif dist < 5:
                 score += 30
-            elif distance < 10:
+            elif dist < 10:
                 score += 10
-            
-            # Driver rating score
             if driver.user.rating > 0:
-                score += min(float(driver.user.rating) * 5, 25)  # Max 25 points for rating
-            
-            # Task completion score
+                score += min(float(driver.user.rating) * 5, 25)
             if driver.total_tasks > 0:
-                score += min(driver.total_tasks, 25)  # Max 25 points for experience
-            
-            # Availability bonus
+                score += min(driver.total_tasks, 25)
             if driver.is_available:
                 score += 10
-            
-            # Verification bonus - verified drivers get priority
             if driver.is_verified:
                 score += 15
-            
-            # Debt penalty (drivers with high debt get lower priority)
             if driver.current_debt > 0:
                 debt_ratio = driver.current_debt / driver.debt_limit if driver.debt_limit > 0 else 1
                 score -= int(debt_ratio * 20)
-            
-            scored_drivers.append({
-                'driver': driver,
-                'score': score,
-                'distance': distance
-            })
-        
-        # Sort by score (highest first) and limit results
-        scored_drivers.sort(key=lambda x: x['score'], reverse=True)
-        return [item['driver'] for item in scored_drivers[:limit]]
-        
+            scored.append((score, driver))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [driver for _, driver in scored[:limit]]
+
     except Exception as e:
         logger.error(f"Error finding best drivers for task {task.id}: {e}")
         return []

@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import { signOut, getDriverProfile, updateDriverProfile } from '../services/driverService';
+import { signOut, getDriverProfile, updateDriverProfile, getDriverRatings } from '../services/driverService';
 
 const C = {
   primary: '#006e2f', primaryC: '#22c55e', onPrimaryC: '#004b1e',
@@ -28,15 +28,20 @@ export default function DriverProfileScreen({ navigation }) {
   const [saving, setSaving]       = useState(false);
   const [editing, setEditing]     = useState(false);
   const [form, setForm]           = useState({ full_name: '', area: '' });
+  const [ratings, setRatings]     = useState(null);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const data = await getDriverProfile();
+        const [data, ratingData] = await Promise.all([
+          getDriverProfile(),
+          getDriverRatings(),
+        ]);
         if (data?.id) {
           setProfile(data);
           setForm({ full_name: data.full_name || '', area: data.area || '' });
         }
+        if (ratingData) setRatings(ratingData);
       } catch (err) {
         console.warn('[Profile] load:', err.message);
       } finally {
@@ -145,6 +150,19 @@ export default function DriverProfileScreen({ navigation }) {
             <View style={s.statCard}>
               <Text style={s.statLabel}>Total Tasks</Text>
               <Text style={s.statVal}>{profile?.total_tasks ?? 0}</Text>
+            </View>
+            <View style={s.statCard}>
+              <Text style={s.statLabel}>Rating</Text>
+              <Text style={s.statVal}>
+                {ratings?.rating_count > 0
+                  ? `${ratings.average_rating.toFixed(1)} ★`
+                  : '—'}
+              </Text>
+              {ratings?.rating_count > 0 && (
+                <Text style={{ fontSize: 11, color: C.outline, marginTop: 2 }}>
+                  {ratings.rating_count} review{ratings.rating_count !== 1 ? 's' : ''}
+                </Text>
+              )}
             </View>
             <View style={s.statCard}>
               <Text style={s.statLabel}>Status</Text>

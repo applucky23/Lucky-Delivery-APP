@@ -25,10 +25,13 @@ DATABASE_URL = f"postgresql://postgres.{user}:{password}@aws-1-eu-central-1.pool
 DATABASES = {
     'default': dj_database_url.config(
         default=DATABASE_URL,
-        conn_max_age=600,
+        conn_max_age=60,
         ssl_require=True
     )
 }
+
+# Disable server-side cursors for PgBouncer compatibility (Supabase pooler port 6543)
+DATABASES['default']['DISABLE_SERVER_SIDE_CURSORS'] = True
 
 # Development-specific logging
 LOGGING = {

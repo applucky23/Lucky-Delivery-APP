@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient';
 
-const DJANGO_URL = 'https://a303-196-189-145-165.ngrok-free.app/api/v1';
+const DJANGO_URL = 'http://192.168.1.3:8000/api/v1';
 
 // ── Network check helper ──────────────────────────────────────────────────────
 const checkNetwork = async () => {
@@ -57,6 +57,7 @@ const apiCall = async (method, path, body = null, directToken = null) => {
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
+        Accept: 'application/json',
         'ngrok-skip-browser-warning': '1',
         'User-Agent': 'LuckyApp/1.0',
       },
@@ -91,11 +92,26 @@ export const acceptTask           = (taskId) => apiCall('POST', `/tasks/${taskId
 export const rejectTask           = (taskId) => apiCall('POST', `/tasks/${taskId}/reject/`);
 export const getTaskDetail        = (taskId) => apiCall('GET',  `/tasks/${taskId}/`);
 export const getActiveTask        = () => apiCall('GET', '/tasks/driver/active/');
-export const updateDriverProfile  = (data)   => apiCall('PATCH', '/driver/profile/update/', data);
+export const getDriverDashboard         = () => apiCall('GET', '/driver/dashboard/');
+export const getDriverEarnings          = () => apiCall('GET', '/driver/earnings/');
+export const payCommission              = (data) => apiCall('POST', '/driver/pay-commission/', data);
+export const getCommissionPayments      = () => apiCall('GET', '/driver/commission-payments/');
+export const cancelCommissionPayment    = () => apiCall('POST', '/driver/cancel-commission-payment/');
+export const getDriverRatings           = () => apiCall('GET', '/driver/ratings/');
+export const updateDriverProfile     = (data)   => apiCall('PATCH', '/driver/profile/update/', data);
+export const updateDriverLocation    = (lat, lng) => apiCall('POST', '/driver/location/', { latitude: lat, longitude: lng });
+export const driverRefresh           = () => apiCall('POST', '/driver/refresh/');
+export const updateTaskStatus        = (taskId, data) => apiCall('PATCH', `/tasks/${taskId}/update/`, data);
 
-// ── Task status transitions ───────────────────────────────────────────────────
-export const updateTaskStatus = (taskId, data) => apiCall('PATCH', `/tasks/${taskId}/update/`, data);
-export const transitionTask   = (taskId, action) => apiCall('POST', `/tasks/${taskId}/transition/`, { action });
+// ── Task FSM transitions ─────────────────────────────────────────────────────
+export const markArrived       = (taskId) => apiCall('POST', `/tasks/${taskId}/mark-arrived/`);
+export const submitItemAmount  = (taskId, amount) => apiCall('POST', `/tasks/${taskId}/submit-amount/`, { amount });
+export const startDelivery     = (taskId) => apiCall('POST', `/tasks/${taskId}/start-delivery/`);
+export const verifyReceipt     = (taskId, imageUrl, type) => apiCall('POST', `/tasks/${taskId}/verify-receipt/`, { image_url: imageUrl, type });
+export const doneShopping      = (taskId) => apiCall('POST', `/tasks/${taskId}/done-shopping/`);
+export const arriveAtDropoff   = (taskId) => apiCall('POST', `/tasks/${taskId}/arrive-at-dropoff/`);
+export const completeTask      = (taskId) => apiCall('POST', `/tasks/${taskId}/complete/`);
+export const confirmPayment    = (taskId) => apiCall('POST', `/tasks/${taskId}/confirm-payment/`);
 
 // ── Supabase Storage image upload ─────────────────────────────────────────────
 

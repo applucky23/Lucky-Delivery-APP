@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import HealthCheckView, TestAuthView, UserProfileView, DriverRegisterView, DriverProfileView, DriverProfileUpdateView
+from .views import HealthCheckView, TestAuthView, UserProfileView, DriverRegisterView, DriverProfileView, DriverProfileUpdateView, DriverLocationUpdateView, DriverRefreshView, DriverEarningsView, PayCommissionView, CommissionPaymentHistoryView, CancelCommissionPaymentView, DriverDashboardView, CreateRatingView, DriverRatingsView
 
 urlpatterns = [
     path('health/',                  HealthCheckView.as_view(),        name='health'),
@@ -8,4 +8,13 @@ urlpatterns = [
     path('driver/register/',         DriverRegisterView.as_view(),      name='driver-register'),
     path('driver/profile/',          DriverProfileView.as_view(),       name='driver-profile'),
     path('driver/profile/update/',   DriverProfileUpdateView.as_view(), name='driver-profile-update'),
+    path('driver/location/',         DriverLocationUpdateView.as_view(),   name='driver-location'),
+    path('driver/refresh/',          DriverRefreshView.as_view(),          name='driver-refresh'),
+    path('driver/earnings/',             DriverEarningsView.as_view(),              name='driver-earnings'),
+    path('driver/dashboard/',                     DriverDashboardView.as_view(),                 name='driver-dashboard'),
+    path('driver/pay-commission/',            PayCommissionView.as_view(),                name='driver-pay-commission'),
+    path('driver/cancel-commission-payment/', CancelCommissionPaymentView.as_view(),     name='driver-cancel-commission-payment'),
+    path('driver/commission-payments/',  CommissionPaymentHistoryView.as_view(),    name='driver-commission-payments'),
+    path('tasks/<int:task_id>/rate/',     CreateRatingView.as_view(),                name='task-rate'),
+    path('driver/ratings/',               DriverRatingsView.as_view(),               name='driver-ratings'),
 ]

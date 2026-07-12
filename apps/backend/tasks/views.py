@@ -1,3 +1,4 @@
+import math
 from rest_framework.views import APIView
 from rest_framework.generics import RetrieveAPIView, UpdateAPIView
 from rest_framework.response import Response
@@ -6,18 +7,18 @@ from rest_framework import status
 import logging
 from django.db import transaction
 from django.core.exceptions import ValidationError
-from customers.models import Task, DriverProfile
+from customers.models import Task, DriverProfile, TaskAssignment
 from .permissions import IsTaskOwnerOrAdminOrDriver, IsOwnerOrAdmin, IsDriver, IsAdminUser
 from .services.cancel_task import cancel
 from .services.task_assignment import dispatch
-from .services.geo_validation import validate_driver_at_pickup, mark_task_arrived
-from .services.task_progression import submit_item_amount, approve_price, reject_price, start_delivery
+from .services.geo_validation import check_arrival_distance, mark_task_arrived
+from .services.task_progression import submit_item_amount, start_delivery, done_shopping, arrive_at_dropoff
 from .services.task_accept_reject import accept_task, reject_task
 from .services.manual_assignments import manual_assign
 from .services.receipt_verification import verify_receipt
-from .services.task_completion import complete_task
+from .services.task_completion import complete_task, confirm_payment
 from .services.task_validation import validate_user_can_create_task, validate_task_can_be_updated
-from .serializers import TaskSerializer, TaskDetailSerializer, AdminTaskSerializer
+from .serializers import TaskSerializer, TaskDetailSerializer, AdminTaskSerializer, TaskAssignmentSerializer
 from .utils import get_task_or_404, get_driver_profile_or_404
 
 
@@ -34,7 +35,7 @@ class TaskListCreateView(APIView):
             user = request.user
 
             queryset = Task.objects.exclude(
-                status__in=['COMPLETED', 'CANCELLED']
+                status='CANCELLED'
             ).select_related('user', 'driver').order_by('-created_at')
 
             if user.role != 'ADMIN':
@@ -69,6 +70,44 @@ class TaskListCreateView(APIView):
 
             if serializer.is_valid():
                 task = serializer.save(user=request.user)
+
+                # Calculate estimated distance and price
+                from math import radians, cos, sin, asin, sqrt
+                def _haversine(lat1, lon1, lat2, lon2):
+                    lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+                    dlon = lon2 - lon1
+                    dlat = lat2 - lat1
+                    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+                    c = 2 * asin(sqrt(a))
+                    return c * 6371
+
+                dist = _haversine(
+                    float(task.pickup_lat), float(task.pickup_lng),
+                    float(task.dropoff_lat), float(task.dropoff_lng)
+                )
+                size_premium_map = {'up_to_2kg': 10, 'up_to_6kg': 20, 'up_to_10kg': 30}
+                size_premium = size_premium_map.get(task.item_size, 0)
+
+                if task.type == 'ERRAND' and dist < 0.01:
+                    # No pickup needed — single location errand
+                    task.estimated_price = 30
+                elif task.type == 'ERRAND':
+                    # Round trip: pickup → errand → back to pickup
+                    task.estimated_price = 30 + round(dist * 20)
+                else:
+                    # DELIVERY / SHOPPING standard pricing + size premium
+                    distance_charge = 30 if dist <= 1 else 30 + int(dist - 1) * 10
+                    task.estimated_price = distance_charge + size_premium
+
+                if task.priority == 'urgent':
+                    task.estimated_price = math.ceil(task.estimated_price * 1.2)
+
+                if task.type == 'ERRAND' and dist >= 0.01:
+                    task.estimated_distance_km = round(dist * 2, 2)  # round trip
+                else:
+                    task.estimated_distance_km = round(dist, 2)
+                task.save(update_fields=['estimated_distance_km', 'estimated_price'])
+
                 dispatch(task)
 
                 if user.role == 'ADMIN':
@@ -242,6 +281,53 @@ class ManualAssignTaskAPIView(APIView):
             )
 
 
+class DriverAssignmentsView(APIView):
+    """
+    GET /api/v1/tasks/driver/assignments/
+    Returns all PENDING task assignments for the authenticated driver.
+    """
+    permission_classes = [IsAuthenticated, IsDriver]
+
+    def get(self, request):
+        try:
+            driver_profile = get_driver_profile_or_404(request.user)
+        except DriverProfile.DoesNotExist:
+            return Response({'error': 'Driver profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        assignments = (
+            TaskAssignment.objects
+            .filter(driver=driver_profile, outcome='PENDING')
+            .select_related('task', 'task__user')
+            .order_by('-notified_at')
+        )
+        serializer = TaskAssignmentSerializer(assignments, many=True)
+        return Response(serializer.data)
+
+
+class DriverActiveTaskView(APIView):
+    """
+    GET /api/v1/tasks/driver/active/
+    Returns the driver's current active task (ASSIGNED, ARRIVED, etc.)
+    """
+    permission_classes = [IsAuthenticated, IsDriver]
+
+    def get(self, request):
+        try:
+            driver_profile = get_driver_profile_or_404(request.user)
+        except DriverProfile.DoesNotExist:
+            return Response({'error': 'Driver profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        active_task = Task.objects.filter(
+            driver=driver_profile,
+            status__in=['ASSIGNED', 'ARRIVED', 'AWAITING_APPROVAL', 'PURCHASED', 'DELIVERING', 'AWAITING_PAYMENT']
+        ).select_related('user').order_by('-created_at').first()
+
+        if not active_task:
+            return Response({'error': 'No active task'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(TaskDetailSerializer(active_task).data)
+
+
 class MarkArrivedAPIView(APIView):
     permission_classes = [IsAuthenticated, IsDriver]
 
@@ -264,17 +350,13 @@ class MarkArrivedAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        try:
-            validate_driver_at_pickup(driver_profile, task)
-            mark_task_arrived(task, driver_profile)
-            return Response({'message': 'Arrival confirmed'}, status=status.HTTP_200_OK)
-        except ValueError as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception:
-            return Response(
-                {'error': 'An unexpected error occurred while marking arrival'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        mark_task_arrived(task, driver_profile)
+        response = {'message': 'Arrival confirmed'}
+        distance = check_arrival_distance(driver_profile, task)
+        if distance and distance > 300:
+            response['warning'] = True
+            response['distance'] = distance
+        return Response(response, status=status.HTTP_200_OK)
 
 
 class StartDeliveryAPIView(APIView):
@@ -287,8 +369,10 @@ class StartDeliveryAPIView(APIView):
         except (Task.DoesNotExist, DriverProfile.DoesNotExist) as e:
             return Response({'error': str(e)}, status=status.HTTP_404_NOT_FOUND)
 
+        logger.info(f"[StartDelivery] task={task.id} type={task.type} status={task.status} driver={driver_profile.id}")
         try:
             start_delivery(task, driver_profile)
+            logger.info(f"[StartDelivery] OK — task={task.id} now at status={task.status}")
             return Response({'message': 'Delivery started'}, status=status.HTTP_200_OK)
         except ValueError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -347,69 +431,59 @@ class SubmitItemAmountAPIView(APIView):
             )
 
 
-class ApprovePriceAPIView(APIView):
-    permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
+
+
+
+class DoneShoppingAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsDriver]
 
     def post(self, request, task_id):
         try:
-            task = get_task_or_404(task_id, select_related=['user'])
-        except Task.DoesNotExist:
-            return Response({'error': 'Task not found'}, status=status.HTTP_404_NOT_FOUND)
-
-        if task.user != request.user and request.user.role != 'ADMIN':
-            return Response(
-                {'error': 'You do not have permission to approve this task'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        if task.status != 'AWAITING_APPROVAL':
-            return Response(
-                {'error': f'Cannot approve task from status {task.status}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            driver_profile = get_driver_profile_or_404(request.user)
+            task = get_task_or_404(task_id)
+        except (Task.DoesNotExist, DriverProfile.DoesNotExist) as e:
+            return Response({'error': str(e)}, status=status.HTTP_404_NOT_FOUND)
 
         try:
-            approve_price(task, request.user)
-            return Response({'message': 'Price approved successfully'}, status=status.HTTP_200_OK)
+            done_shopping(task, driver_profile)
+            return Response(
+                {'message': 'Shopping completed, on the way!'},
+                status=status.HTTP_200_OK,
+            )
         except ValueError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception:
+            logger.exception('Error in done_shopping for task %s', task_id)
             return Response(
-                {'error': 'An unexpected error occurred while approving price'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {'error': 'An unexpected error occurred'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
 
-class RejectPriceAPIView(APIView):
-    permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
+class ArriveAtDropoffAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsDriver]
 
     def post(self, request, task_id):
         try:
-            task = get_task_or_404(task_id, select_related=['user'])
-        except Task.DoesNotExist:
-            return Response({'error': 'Task not found'}, status=status.HTTP_404_NOT_FOUND)
+            driver_profile = get_driver_profile_or_404(request.user)
+            task = get_task_or_404(task_id)
+        except (Task.DoesNotExist, DriverProfile.DoesNotExist) as e:
+            return Response({'error': str(e)}, status=status.HTTP_404_NOT_FOUND)
 
-        if task.user != request.user and request.user.role != 'ADMIN':
-            return Response(
-                {'error': 'You do not have permission to reject this task'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        if task.status != 'AWAITING_APPROVAL':
-            return Response(
-                {'error': f'Cannot reject task from status {task.status}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        if task.driver != driver_profile:
+            return Response({'error': 'Not your task'}, status=status.HTTP_403_FORBIDDEN)
 
         try:
-            reject_price(task, request.user)
-            return Response({'message': 'Price rejected and task cancelled'}, status=status.HTTP_200_OK)
+            arrive_at_dropoff(task, driver_profile)
+            serializer = TaskDetailSerializer(task, context={'request': request})
+            return Response(serializer.data, status=status.HTTP_200_OK)
         except ValueError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception:
+            logger.exception('Error in arrive_at_dropoff for task %s', task_id)
             return Response(
-                {'error': 'An unexpected error occurred while rejecting price'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {'error': 'An unexpected error occurred'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
 
@@ -433,7 +507,7 @@ class VerifyReceiptAPIView(APIView):
         try:
             with transaction.atomic():
                 try:
-                    task = Task.objects.select_related('user', 'driver').select_for_update().get(id=task_id)
+                    task = Task.objects.select_related('user', 'driver').get(id=task_id)
                 except Task.DoesNotExist:
                     return Response({'error': 'Task not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -446,7 +520,7 @@ class VerifyReceiptAPIView(APIView):
                 verify_receipt(task, driver_profile, image_url, receipt_type)
 
             return Response(
-                {'message': 'Receipt verified, task is now in delivery'},
+                {'message': 'Receipt uploaded, will be cross-checked by admin'},
                 status=status.HTTP_200_OK,
             )
         except ValueError as e:
@@ -469,8 +543,33 @@ class CompleteTaskAPIView(APIView):
         except (Task.DoesNotExist, DriverProfile.DoesNotExist) as e:
             return Response({'error': str(e)}, status=status.HTTP_404_NOT_FOUND)
 
+        logger.info(f"[CompleteTask] task={task.id} type={task.type} status={task.status} driver={driver_profile.id}")
         try:
-            complete_task(task, driver_profile)
+            result = complete_task(task, driver_profile)
+            logger.info(f"[CompleteTask] OK — task={task.id} now at status={task.status}")
+            return Response(result, status=status.HTTP_200_OK)
+        except ValueError as e:
+            logger.warning(f"[CompleteTask] ValueError for task={task.id}: {e}")
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            return Response(
+                {'error': 'An unexpected error occurred while completing the task'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class ConfirmPaymentAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsDriver]
+
+    def post(self, request, task_id):
+        try:
+            driver_profile = get_driver_profile_or_404(request.user)
+            task = get_task_or_404(task_id, select_related=['user', 'driver'])
+        except (Task.DoesNotExist, DriverProfile.DoesNotExist) as e:
+            return Response({'error': str(e)}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            confirm_payment(task, driver_profile)
             return Response(
                 {'message': f'Task #{task.id} completed successfully'},
                 status=status.HTTP_200_OK
@@ -479,6 +578,6 @@ class CompleteTaskAPIView(APIView):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception:
             return Response(
-                {'error': 'An unexpected error occurred while completing the task'},
+                {'error': 'An unexpected error occurred while confirming payment'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
