@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('customers', '0019_add_notification'),
+        ('customers', '0018_taskproof_ocr_failed'),
     ]
 
     operations = [

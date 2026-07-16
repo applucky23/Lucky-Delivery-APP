@@ -1,7 +1,6 @@
 from decimal import Decimal
 from django.db import transaction
 from customers.models import TaskTransaction, WalletTransaction
-from notifications.services import create_notification
 
 COMMISSION_RATE = Decimal('0.15')
 WAITING_FEE_PER_MINUTE = Decimal('0.5')  # 0.5 birr per minute (1 birr per 2 min)
@@ -89,13 +88,6 @@ def complete_task(task, driver_profile):
         }
     )
 
-    # TODO: notify customer that delivery is done — show final price
-
-    create_notification(
-        task.user, 'PAYMENT_REQUIRED',
-        'Delivery complete',
-        f'Your {task.get_type_display().lower()} order has been delivered. Final price: {final_price} ETB.',
-    )
     # TODO: prompt both driver and customer to rate each other
 
     return {
@@ -172,8 +164,4 @@ def confirm_payment(task, driver_profile):
         }
     )
 
-    create_notification(
-        task.user, 'TASK_COMPLETED',
-        'Payment confirmed',
-        f'Your {task.get_type_display().lower()} order is complete! Thank you for using Lucky.',
-    )
+

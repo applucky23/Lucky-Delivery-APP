@@ -2,7 +2,6 @@ from django.utils import timezone
 from datetime import timedelta
 from django.db.models import Q, Max
 from customers.models import TaskAssignment, Task, TaskTransaction, DriverProfile
-from notifications.services import create_notification
 import logging
 
 logger = logging.getLogger(__name__)
@@ -90,12 +89,6 @@ def auto_cancel_exhausted_tasks():
                 'cancelled_by': 'system',
                 'reason': 'Auto-cancelled: no available drivers',
             }
-        )
-
-        create_notification(
-            task.user, 'SYSTEM_ALERT',
-            'Task cancelled',
-            'Your task was cancelled because no drivers were available.',
         )
 
         count += 1

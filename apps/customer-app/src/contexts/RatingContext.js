@@ -1,14 +1,12 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
-import { getTasks, getTaskRating, getUnreadCount } from '../services/authService';
+import { getTasks, getTaskRating } from '../services/authService';
 
 const RatingContext = createContext();
-const NotifContext = createContext();
 
 const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
 
 export function RatingProvider({ children }) {
   const [pendingTaskId, setPendingTaskId] = useState(null);
-  const [unreadCount, setUnreadCount] = useState(0);
   const checkedRef = useRef(new Set());
 
   const triggerRating = useCallback((taskId) => {
@@ -53,11 +51,6 @@ export function RatingProvider({ children }) {
         }
       } catch { /* silently ignored */ }
 
-      // 2) Unread notification count (same tick, no extra interval)
-      try {
-        const d = await getUnreadCount();
-        setUnreadCount(d.count || 0);
-      } catch {}
     };
 
     tick();
@@ -65,21 +58,11 @@ export function RatingProvider({ children }) {
     return () => clearInterval(iv);
   }, [triggerRating, markChecked]);
 
-  const refresh = useCallback(async () => {
-    try {
-      const d = await getUnreadCount();
-      setUnreadCount(d.count || 0);
-    } catch {}
-  }, []);
-
   return (
     <RatingContext.Provider value={{ pendingTaskId, triggerRating, dismissRating }}>
-      <NotifContext.Provider value={{ count: unreadCount, refresh }}>
-        {children}
-      </NotifContext.Provider>
+      {children}
     </RatingContext.Provider>
   );
 }
 
 export const useRating = () => useContext(RatingContext);
-export const useNotifCount = () => useContext(NotifContext);

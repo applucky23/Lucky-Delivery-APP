@@ -12,13 +12,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { getCustomer } from '../services/authService';
-import { useNotifCount } from '../contexts/RatingContext';
 
 const { width } = Dimensions.get('window');
 
 const HomeScreen = ({ navigation, route }) => {
   const insets = useSafeAreaInsets();
-  const { count: unreadCount } = useNotifCount();
   const [userName, setUserName] = useState('');
 
   useEffect(() => {
@@ -43,14 +41,9 @@ const HomeScreen = ({ navigation, route }) => {
           <MaterialIcons name="location-on" size={20} color="#16A34A" />
           <Text style={styles.locationText}>Addis Ababa</Text>
         </View>
-        <TouchableOpacity style={styles.iconButton} onPress={() => navigation.navigate('Notifications')}>
+        <View style={styles.iconButton}>
           <MaterialIcons name="notifications-none" size={24} color="#6B7280" />
-          {unreadCount > 0 && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView 
@@ -204,8 +197,6 @@ const styles = StyleSheet.create({
   locationContainer: { flexDirection: 'row', alignItems: 'center' },
   locationText: { marginLeft: 4, fontWeight: '700', fontSize: 14, color: '#141b2b' },
   iconButton: { padding: 8, position: 'relative' },
-  badge:      { position: 'absolute', top: 2, right: 2, backgroundColor: '#DC2626', minWidth: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  badgeText:  { fontSize: 10, fontWeight: '700', color: '#fff' },
   scrollContent: { paddingHorizontal: 24, paddingTop: 10 },
   greetingSection: { marginBottom: 24 },
   greetingTitle: { fontSize: 30, fontWeight: '800', color: '#111827' },

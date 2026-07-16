@@ -2,7 +2,6 @@ from django.utils import timezone
 from .cancel_task import cancel
 from .task_completion import complete_task
 from customers.models import Task
-from notifications.services import create_notification
 import logging
 
 logger = logging.getLogger(__name__)
@@ -35,15 +34,9 @@ def start_delivery(task, driver_profile):
     task.start_delivery()  # FSM transition
     task.save()
 
-    create_notification(
-        task.user, 'TASK_COMPLETED',
-        'Delivery started',
-        f'Your driver is on the way with your {task.get_type_display().lower()} order.',
-    )
-
 
 def done_shopping(task, driver_profile):
-    """Driver finishes shopping (SHOPPING only) — ends waiting timer, transitions PURCHASED → DELIVERING"""
+    """Driver finishes shopping (SHOPPING only) — ends waiting timer, transitions PURCHASED -> DELIVERING"""
 
     if task.driver != driver_profile:
         raise ValueError("You are not assigned to this task")
@@ -56,16 +49,10 @@ def done_shopping(task, driver_profile):
 
     # End waiting timer
     task.waiting_ended_at = timezone.now()
-    task.start_delivery()  # PURCHASED → DELIVERING
+    task.start_delivery()  # PURCHASED -> DELIVERING
     task.save()
 
     logger.info(f"Task {task.id}: driver {driver_profile.id} finished shopping")
-
-    create_notification(
-        task.user, 'TASK_COMPLETED',
-        'Delivery started',
-        f'Your driver is on the way with your {task.get_type_display().lower()} order.',
-    )
 
 
 def arrive_at_dropoff(task, driver_profile):
@@ -89,12 +76,6 @@ def arrive_at_dropoff(task, driver_profile):
 
     logger.info(f"Task {task.id}: driver {driver_profile.id} arrived at errand dropoff")
 
-    create_notification(
-        task.user, 'DRIVER_ARRIVED',
-        'Driver at errand location',
-        f'Your driver has arrived at the errand location for task #{task.id}.',
-    )
-
 
 def submit_item_amount(task, driver_profile, reported_amount):
     """Driver submits the item cost for purchase (SHOPPING only)"""
@@ -103,11 +84,5 @@ def submit_item_amount(task, driver_profile, reported_amount):
         raise ValueError("Only shopping tasks require price submission")
 
     task.item_cost = reported_amount
-    task.approve_purchase()  # ARRIVED → PURCHASED directly, no customer approval needed
+    task.approve_purchase()  # ARRIVED -> PURCHASED directly, no customer approval needed
     task.save()
-
-    create_notification(
-        task.user, 'TASK_ASSIGNED',
-        'Items purchased',
-        f'Driver has purchased your items (cost: {reported_amount} ETB). Review in task details.',
-    )

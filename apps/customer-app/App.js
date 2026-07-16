@@ -21,7 +21,6 @@ import HelpScreen from './src/screens/HelpScreen';
 import PrivacyScreen from './src/screens/PrivacyScreen';
 import TermsScreen from './src/screens/TermsScreen';
 import LanguageScreen from './src/screens/LanguageScreen';
-import NotificationScreen from './src/screens/NotificationScreen';
 import { RatingProvider } from './src/contexts/RatingContext';
 import RatingOverlay from './src/components/RatingOverlay';
 
@@ -73,7 +72,6 @@ export default function App() {
             <Stack.Screen name="Privacy" component={PrivacyScreen} />
             <Stack.Screen name="Terms" component={TermsScreen} />
             <Stack.Screen name="Language" component={LanguageScreen} />
-            <Stack.Screen name="Notifications" component={NotificationScreen} />
           </Stack.Navigator>
         </NavigationContainer>
         <RatingOverlay />

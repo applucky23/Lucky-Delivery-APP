@@ -1,6 +1,5 @@
 from django.db import transaction
 from customers.models import TaskTransaction,AdminAction,TaskAssignment
-from notifications.services import create_notification
 @transaction.atomic
 def cancel(task,user):
     """Cancel a task using FSM transition"""
@@ -71,8 +70,4 @@ def cancel(task,user):
         }
     )
 
-    create_notification(
-        task.user, 'SYSTEM_ALERT',
-        'Task cancelled',
-        'Your task has been cancelled successfully.',
-    )
+

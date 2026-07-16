@@ -43,7 +43,6 @@ INSTALLED_APPS = [
     'customers',
     'tasks',
     'payments',
-    'notifications',
     'core',
 ]
 

@@ -2,7 +2,6 @@ from django.db import transaction
 from django.utils import timezone
 from customers.models import Task, TaskAssignment
 from .task_assignment import dispatch
-from notifications.services import create_notification
 import logging
 
 logger = logging.getLogger(__name__)
@@ -70,12 +69,6 @@ def accept_task(task, driver_profile):
         )
 
         logger.info(f"Task {task.id} accepted by driver {driver_profile.id}")
-
-        create_notification(
-            task.user, 'TASK_ASSIGNED',
-            'Driver assigned',
-            f'{driver_profile.full_name} has been assigned to your {task.get_type_display().lower()} task.',
-        )
 
         return {
             'success': True,

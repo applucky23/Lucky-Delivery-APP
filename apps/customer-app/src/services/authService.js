@@ -146,9 +146,3 @@ export const cancelTask    = (id)       => apiPost(`/tasks/${id}/cancel/`, {});
 export const rateTask       = (taskId, rating, comment) => apiPost(`/tasks/${taskId}/rate/`, { rating, comment });
 export const getTaskRating  = (taskId) => apiGet(`/tasks/${taskId}/rate/`);
 
-// ── Notifications ─────────────────────────────────────────────────────────────
-
-export const getNotifications   = ()      => apiGet('/notifications/');
-export const getUnreadCount     = ()      => apiGet('/notifications/unread-count/');
-export const markRead           = (id)    => apiPost(`/notifications/${id}/read/`, {});
-export const markAllRead        = ()      => apiPost('/notifications/read-all/', {});
