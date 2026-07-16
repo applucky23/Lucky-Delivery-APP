@@ -16,9 +16,12 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from customers.admin_views import analytics_dashboard
 
 urlpatterns = [
+    path('admin/analytics/', analytics_dashboard, name='admin-analytics'),
     path('admin/', admin.site.urls),
     path('api/v1/', include('customers.urls')),
     path('api/v1/', include('tasks.urls')),
+    path('api/v1/', include('notifications.urls')),
 ]

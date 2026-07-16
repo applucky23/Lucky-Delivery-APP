@@ -141,6 +141,7 @@ def verify_receipt(task, driver_profile, image_url: str, receipt_type: str) -> N
     if task.type != 'SHOPPING':
         raise ValueError("Receipt verification is only for SHOPPING tasks")
 
+    receipt_type = receipt_type.upper()
     if receipt_type not in ('RECEIPT', 'SMS'):
         raise ValueError("Receipt type must be 'RECEIPT' or 'SMS'")
 
@@ -155,6 +156,8 @@ def verify_receipt(task, driver_profile, image_url: str, receipt_type: str) -> N
     if len(image_url) > 2000:
         raise ValueError("image_url is too long")
 
+    if task.item_cost is None:
+        raise ValueError("item_cost is not set on this task")
     item_cost = Decimal(str(task.item_cost))
 
     # TODO: move OCR to an async Celery task so the driver gets an immediate
@@ -174,6 +177,7 @@ def verify_receipt(task, driver_profile, image_url: str, receipt_type: str) -> N
         driver_reported_amount=item_cost,
         extracted_amount=Decimal(str(extracted)) if extracted is not None else None,
         is_flagged=is_flagged,
+        ocr_failed=extracted is None,
     )
 
     if is_flagged:
@@ -185,9 +189,5 @@ def verify_receipt(task, driver_profile, image_url: str, receipt_type: str) -> N
             item_cost,
         )
 
-    # Always advance regardless of flag status; admins review after the fact
-    try:
-        task.start_delivery()
-        task.save()
-    except Exception as exc:
-        raise ValueError(f"Failed to start delivery: {exc}") from exc
+    # Receipt stored; task stays at PURCHASED.
+    # Driver must call "Done Shopping" to advance to DELIVERING.

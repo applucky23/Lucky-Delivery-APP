@@ -15,7 +15,7 @@ def validate_user_can_create_task(user):
     ).exists()
     
     if existing_tasks:
-        raise ValidationError("You already have an active task.")
+        raise ValidationError("You already have an active task. Cancel or complete the task to create a new one.")
     
     return True
 

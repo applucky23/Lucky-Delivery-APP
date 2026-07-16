@@ -2,12 +2,15 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.db.models import Count, Avg, Sum
 from django.utils.safestring import mark_safe
-from django.urls import reverse
+from django.urls import reverse, path
 from django.utils import timezone
+from django.http import HttpResponseRedirect
+from django.contrib import messages
 from rangefilter.filter import DateRangeFilter
 from import_export import resources
 from import_export.admin import ImportExportModelAdmin
-from customers.models import Task, TaskTransaction, TaskProof, TaskAssignment, AdminAction
+from customers.models import Task, TaskTransaction, TaskProof, TaskAssignment, AdminAction, DriverProfile
+from tasks.services.manual_assignments import manual_assign
 
 
 class TaskResource(resources.ModelResource):
@@ -149,6 +152,60 @@ class TaskAdmin(ImportExportModelAdmin):
         qs = super().get_queryset(request)
         return qs.select_related('user', 'driver__user')
 
+    def save_model(self, request, obj, form, change):
+        """When admin sets/changes the driver field, create a TaskAssignment record."""
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # Capture pre-save state
+        prev_driver_id = None
+        prev_status = None
+        if change:
+            try:
+                prev = Task.objects.get(pk=obj.pk)
+                prev_driver_id = prev.driver_id
+                prev_status = prev.status
+            except Task.DoesNotExist:
+                pass
+
+        super().save_model(request, obj, form, change)
+
+        logger.info(f'[AdminSave] task#{obj.id} prev_driver={prev_driver_id} new_driver={obj.driver_id} prev_status={prev_status} new_status={obj.status} changed={form.changed_data}')
+
+        # Create assignment whenever driver is set/changed, regardless of status
+        driver_changed = obj.driver_id and obj.driver_id != prev_driver_id
+        if driver_changed:
+            # manual_assign requires PENDING status — create assignment directly if task is already past PENDING
+            from customers.models import TaskAssignment
+            from django.utils import timezone
+
+            if obj.status == 'PENDING':
+                result = manual_assign(obj, obj.driver, admin=request.user)
+                logger.info(f'[AdminSave] manual_assign result: {result}')
+                if result['success']:
+                    messages.success(request, f"✓ TaskAssignment created — driver {obj.driver.full_name} will see this task.")
+                else:
+                    messages.warning(request, f"Driver set but: {result['message']}")
+            else:
+                # Task already past PENDING — create assignment directly
+                assignment, created = TaskAssignment.objects.get_or_create(
+                    task=obj,
+                    driver=obj.driver,
+                    defaults={'outcome': 'PENDING'}
+                )
+                if created:
+                    messages.success(request, f"✓ TaskAssignment created — driver {obj.driver.full_name} will see this task.")
+                    logger.info(f'[AdminSave] Direct assignment created id={assignment.id}')
+                else:
+                    # Already exists — make sure it's PENDING so driver can see it
+                    if assignment.outcome not in ('PENDING', 'ACCEPTED'):
+                        assignment.outcome = 'PENDING'
+                        assignment.responded_at = None
+                        assignment.save()
+                        messages.success(request, f"✓ Assignment reset to PENDING for {obj.driver.full_name}.")
+                    else:
+                        messages.info(request, f"Assignment already exists with outcome={assignment.outcome}.")
+
 
 class TaskProofResource(resources.ModelResource):
     class Meta:
@@ -161,9 +218,9 @@ class TaskProofAdmin(ImportExportModelAdmin):
     resource_class = TaskProofResource
     list_display = (
         'id','task_link', 'proof_type_badge', 'amount_comparison',
-        'verification_status', 'created_at', 'preview_image','is_flagged'
+        'verification_status', 'ocr_failed', 'created_at', 'preview_image'
     )
-    list_filter = ('type', 'is_flagged', 'verified', ('created_at', DateRangeFilter))
+    list_filter = ('type', 'is_flagged', 'ocr_failed', 'verified', ('created_at', DateRangeFilter))
     search_fields = ('task__id', 'task__user__username', 'task__driver__user__username')
     ordering = ('-created_at',)
     readonly_fields = ('created_at', 'preview_image_admin')
@@ -176,7 +233,7 @@ class TaskProofAdmin(ImportExportModelAdmin):
             'fields': ('extracted_amount', 'driver_reported_amount')
         }),
         ('Verification', {
-            'fields': ('is_flagged', 'verified', 'verified_by')
+            'fields': ('is_flagged', 'ocr_failed', 'verified', 'verified_by')
         }),
         ('Timestamps', {
             'fields': ('created_at',)
@@ -205,6 +262,10 @@ class TaskProofAdmin(ImportExportModelAdmin):
     proof_type_badge.allow_tags = True
 
     def amount_comparison(self, obj):
+        if obj.ocr_failed:
+            return format_html(
+                '<span style="color: #f59e0b;">⚠ OCR Failed — manual review needed</span>'
+            )
         if obj.extracted_amount and obj.driver_reported_amount:
             diff = obj.extracted_amount - obj.driver_reported_amount
             if abs(diff) < 0.01:
@@ -232,7 +293,9 @@ class TaskProofAdmin(ImportExportModelAdmin):
                 '<span style="color: #28a745;">✓ Verified by {}</span>',
                 verified_by
             )
-        elif obj.is_flagged:
+        if obj.ocr_failed:
+            return mark_safe('<span style="color: #f59e0b;">⚠ OCR Failed</span>')
+        if obj.is_flagged:
             return mark_safe('<span style="color: #dc3545;">⚠ Flagged</span>')
         return mark_safe('<span style="color: #ffc107;">Pending</span>')
     verification_status.short_description = 'Status'

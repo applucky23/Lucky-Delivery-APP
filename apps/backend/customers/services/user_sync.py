@@ -26,6 +26,7 @@ def get_or_create_user_from_payload(payload: dict):
             updated = True
         if updated:
             user.save(update_fields=['phone_number', 'email'])
+        _sync_role(user)
         return user, False
     except User.DoesNotExist:
         pass
@@ -37,6 +38,8 @@ def get_or_create_user_from_payload(payload: dict):
             if not user.supabase_uid:
                 user.supabase_uid = supabase_uid
                 user.save(update_fields=['supabase_uid'])
+            # Sync role from DriverProfile if needed
+            _sync_role(user)
             return user, False
         except User.DoesNotExist:
             pass
@@ -57,3 +60,15 @@ def get_or_create_user_from_payload(payload: dict):
     )
     logger.info(f'[UserSync] Created new user id={user.id} phone={user.phone_number}')
     return user, True
+
+
+def _sync_role(user):
+    """If user has a DriverProfile but role is still USER, fix it."""
+    if user.role == 'USER':
+        try:
+            user.driver_profile  # will raise if doesn't exist
+            user.role = 'DRIVER'
+            user.save(update_fields=['role'])
+            logger.info(f'[UserSync] Fixed role to DRIVER for user id={user.id}')
+        except Exception:
+            pass

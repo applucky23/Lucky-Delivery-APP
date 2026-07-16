@@ -1,7 +1,5 @@
 from django.db import transaction
 from customers.models import TaskTransaction,AdminAction,TaskAssignment
-
-# TODO: Trigger notification (TASK_CANCELLED) via notifications app
 @transaction.atomic
 def cancel(task,user):
     """Cancel a task using FSM transition"""
@@ -71,3 +69,5 @@ def cancel(task,user):
             'reason': 'User cancelled their own task'
         }
     )
+
+

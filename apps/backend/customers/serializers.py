@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.core.validators import URLValidator, ValidationError
-from .models import UserProfile
+from .models import Rating, UserProfile
 from django.db import transaction
 
 
@@ -100,6 +100,69 @@ class DriverProfileSerializer(serializers.ModelSerializer):
             'area', 'vehicle_type', 'id_image', 'face_image', 'profile_image',
             'status', 'rejection_reason',
             'is_available', 'is_verified', 'is_online', 'is_blocked',
-            'total_tasks', 'created_at',
+            'balance', 'total_tasks', 'created_at',
         ]
         read_only_fields = fields
+
+
+class DriverProfileUpdateSerializer(serializers.ModelSerializer):
+    """Writable serializer — only safe fields the driver can update themselves."""
+    class Meta:
+        from .models import DriverProfile
+        model  = DriverProfile
+        fields = ['full_name', 'area', 'vehicle_type', 'profile_image', 'is_available', 'is_online']
+
+
+class CreateRatingSerializer(serializers.Serializer):
+    rating = serializers.IntegerField(min_value=1, max_value=5)
+    comment = serializers.CharField(required=False, allow_blank=True, max_length=500)
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        task_id = self.context.get('task_id')
+        if not request or not task_id:
+            raise serializers.ValidationError('Missing context')
+
+        from .models import Task, Rating
+        try:
+            task = Task.objects.select_related('driver__user').get(id=task_id)
+        except Task.DoesNotExist:
+            raise serializers.ValidationError('Task not found')
+
+        if task.user != request.user:
+            raise serializers.ValidationError('You can only rate your own tasks')
+
+        if task.status != 'COMPLETED':
+            raise serializers.ValidationError('Can only rate completed tasks')
+
+        if not task.driver:
+            raise serializers.ValidationError('No driver assigned to this task')
+
+        if Rating.objects.filter(from_user=request.user, task=task).exists():
+            raise serializers.ValidationError('You have already rated this task')
+
+        attrs['task'] = task
+        return attrs
+
+    def create(self, validated_data):
+        request = self.context['request']
+        task = validated_data['task']
+        driver_user = task.driver.user
+
+        rating = Rating.objects.create(
+            from_user=request.user,
+            to_user=driver_user,
+            task=task,
+            rating=validated_data['rating'],
+            comment=validated_data.get('comment', ''),
+        )
+
+        # Incremental arithmetic — avoids full aggregate query
+        old_count = driver_user.rating_count or 0
+        old_avg = driver_user.rating or 0
+        new_count = old_count + 1
+        driver_user.rating = ((old_avg * old_count) + validated_data['rating']) / new_count
+        driver_user.rating_count = new_count
+        driver_user.save(update_fields=['rating', 'rating_count'])
+
+        return rating

@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
+<title>Driver Console - Home</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-primary-fixed-variant": "#005321",
+                    "on-tertiary-container": "#003d88",
+                    "surface-container-highest": "#e1e3e4",
+                    "on-tertiary-fixed-variant": "#004395",
+                    "primary-fixed-dim": "#4ae176",
+                    "error-container": "#ffdad6",
+                    "secondary-fixed-dim": "#bec6e0",
+                    "on-error-container": "#93000a",
+                    "primary-fixed": "#6bff8f",
+                    "on-secondary-fixed": "#131b2e",
+                    "tertiary-fixed": "#d8e2ff",
+                    "on-tertiary-fixed": "#001a42",
+                    "on-primary-fixed": "#002109",
+                    "surface-bright": "#f8f9fa",
+                    "on-surface-variant": "#3d4a3d",
+                    "primary": "#006e2f",
+                    "background": "#f8f9fa",
+                    "on-secondary-fixed-variant": "#3f465c",
+                    "surface-container-high": "#e7e8e9",
+                    "secondary": "#565e74",
+                    "secondary-container": "#dae2fd",
+                    "secondary-fixed": "#dae2fd",
+                    "inverse-surface": "#2e3132",
+                    "surface-container-low": "#f3f4f5",
+                    "on-primary": "#ffffff",
+                    "error": "#ba1a1a",
+                    "tertiary-container": "#82abff",
+                    "on-error": "#ffffff",
+                    "outline": "#6d7b6c",
+                    "surface-variant": "#e1e3e4",
+                    "primary-container": "#22c55e",
+                    "on-primary-container": "#004b1e",
+                    "inverse-primary": "#4ae176",
+                    "surface": "#f8f9fa",
+                    "tertiary-fixed-dim": "#adc6ff",
+                    "surface-tint": "#006e2f",
+                    "on-secondary": "#ffffff",
+                    "tertiary": "#005ac2",
+                    "on-surface": "#191c1d",
+                    "outline-variant": "#bccbb9",
+                    "surface-container": "#edeeef",
+                    "surface-container-lowest": "#ffffff",
+                    "inverse-on-surface": "#f0f1f2",
+                    "on-background": "#191c1d",
+                    "surface-dim": "#d9dadb",
+                    "on-tertiary": "#ffffff",
+                    "on-secondary-container": "#5c647a"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "touch_target_min": "48px",
+                    "gutter": "16px",
+                    "margin": "20px",
+                    "lg": "24px",
+                    "md": "16px",
+                    "xs": "4px",
+                    "xl": "32px",
+                    "safe_area_bottom": "34px",
+                    "sm": "8px"
+            },
+            "fontFamily": {
+                    "headline-sm": ["Inter"],
+                    "body-md": ["Inter"],
+                    "body-lg": ["Inter"],
+                    "label-lg": ["Inter"],
+                    "body-sm": ["Inter"],
+                    "action-lg": ["Inter"],
+                    "headline-md": ["Inter"],
+                    "headline-lg": ["Inter"],
+                    "label-md": ["Inter"]
+            },
+            "fontSize": {
+                    "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                    "label-lg": ["14px", {"lineHeight": "20px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                    "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "action-lg": ["18px", {"lineHeight": "24px", "fontWeight": "600"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "500"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background min-h-screen pb-40">
+<!-- TopAppBar Shell -->
+<header class="bg-surface/80 backdrop-blur-md text-primary font-headline-sm text-headline-sm docked full-width top-0 sticky z-50 flex justify-between items-center w-full px-margin h-touch_target_min">
+<div class="flex items-center gap-md">
+<div class="w-8 h-8 rounded-full bg-surface-container-high overflow-hidden border border-outline-variant">
+<img alt="Driver" class="w-full h-full object-cover" data-alt="A professional, close-up portrait of a male delivery driver smiling warmly at the camera. He is wearing a clean, modern green branded polo shirt against a blurred urban background with soft morning sunlight. The image is high-definition, focusing on reliability and professional service within a clean, high-tech gig-economy context." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC8_Q93ZXbxpSbqSo3_0pHaizEFSHEzn-Rz59tn0HMG-pjZwJ9r_RmDca3x14__DmROs657mfTIe9N8j5HqJXoPs__Fpzk3abiDdgfdaQtW5ZgyFsn5DJ9wz3dJaJbFtpDy58AZqNqljaq8Ag8jO7ZYAc_jzv6qeqUMG0cY2ADydbz167YXgD3EcDGyV3dolIYZ6F1_c0cxIRBJwKGjcbOwXhImXXqYXsPLOpY67pG-pbyjNGtt46vLWoxOuGl2-VczMJ7H7f-LXU21"/>
+</div>
+<h1 class="font-headline-md text-headline-md font-bold text-primary">Driver Console</h1>
+</div>
+<button class="material-symbols-outlined text-on-surface-variant hover:bg-surface-container-high/50 transition-colors duration-200 p-2 rounded-full" data-icon="notifications">
+            notifications
+        </button>
+</header>
+<main class="px-margin pt-lg space-y-xl">
+<!-- Wallet / Earnings Card -->
+<section>
+<div class="relative overflow-hidden bg-primary-container rounded-xl p-lg shadow-lg text-on-primary-container">
+<!-- Abstract Pattern Overlays -->
+<div class="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-on-primary-fixed-variant opacity-10 rounded-full blur-3xl"></div>
+<div class="absolute bottom-0 left-0 -ml-8 -mb-8 w-32 h-32 bg-on-primary-container opacity-5 rounded-full blur-2xl"></div>
+<div class="relative z-10">
+<div class="flex justify-between items-start mb-lg">
+<div class="space-y-xs">
+<p class="font-label-md text-label-md opacity-80 uppercase tracking-wider">Current Balance</p>
+<h2 class="font-headline-lg text-headline-lg font-black">12,450.50 ETB</h2>
+</div>
+<div class="bg-on-primary-fixed-variant/20 p-sm rounded-lg backdrop-blur-sm">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">account_balance_wallet</span>
+</div>
+</div>
+<div class="grid grid-cols-3 gap-md border-t border-on-primary-container/10 pt-lg">
+<div class="space-y-xs">
+<p class="font-label-md text-label-md opacity-70">Daily</p>
+<p class="font-headline-sm text-headline-sm font-bold">850 ETB</p>
+</div>
+<div class="space-y-xs border-x border-on-primary-container/10 px-md">
+<p class="font-label-md text-label-md opacity-70">Weekly</p>
+<p class="font-headline-sm text-headline-sm font-bold">5,200 ETB</p>
+</div>
+<div class="space-y-xs">
+<p class="font-label-md text-label-md opacity-70">Monthly</p>
+<p class="font-headline-sm text-headline-sm font-bold">22.1K ETB</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Available Tasks Section -->
+<section class="space-y-md">
+<div class="flex items-center justify-between">
+<h3 class="font-headline-md text-headline-md text-on-surface">Available Tasks</h3>
+<span class="bg-surface-container-high px-md py-xs rounded-full font-label-md text-label-md text-on-surface-variant">4 Nearby</span>
+</div>
+<div class="space-y-md">
+<!-- Task Card 1: Delivery -->
+<div class="bg-surface-container-lowest rounded-xl p-md shadow-sm border border-surface-variant flex flex-col gap-md">
+<div class="flex justify-between items-start">
+<div class="flex gap-md">
+<div class="w-12 h-12 rounded-lg bg-tertiary-container/30 flex items-center justify-center text-tertiary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">local_shipping</span>
+</div>
+<div class="space-y-xs">
+<span class="bg-tertiary-container text-on-tertiary-container text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-tighter">Delivery</span>
+<h4 class="font-headline-sm text-headline-sm">Bole Medhanialem</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant flex items-center gap-xs">
+<span class="material-symbols-outlined text-[16px]">distance</span> 2.4 km • 15 mins
+                                </p>
+</div>
+</div>
+<div class="text-right">
+<p class="font-headline-sm text-headline-sm text-primary font-bold">145 ETB</p>
+<p class="font-label-md text-label-md text-on-surface-variant">+20 Tip potential</p>
+</div>
+</div>
+<div class="flex gap-md mt-sm">
+<button class="flex-1 bg-primary-container text-on-primary-container font-action-lg text-action-lg h-touch_target_min rounded-xl active:scale-95 transition-transform duration-150">Accept</button>
+<button class="flex-1 bg-surface-container text-on-surface-variant font-action-lg text-action-lg h-touch_target_min rounded-xl active:scale-95 transition-transform duration-150">Decline</button>
+</div>
+</div>
+<!-- Task Card 2: Shopping -->
+<div class="bg-surface-container-lowest rounded-xl p-md shadow-sm border border-surface-variant flex flex-col gap-md">
+<div class="flex justify-between items-start">
+<div class="flex gap-md">
+<div class="w-12 h-12 rounded-lg bg-on-tertiary-container/10 flex items-center justify-center text-tertiary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">shopping_bag</span>
+</div>
+<div class="space-y-xs">
+<span class="bg-secondary-container text-on-secondary-container text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-tighter">Shopping</span>
+<h4 class="font-headline-sm text-headline-sm">Kazanchis Supermarket</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant flex items-center gap-xs">
+<span class="material-symbols-outlined text-[16px]">distance</span> 4.1 km • 28 mins
+                                </p>
+</div>
+</div>
+<div class="text-right">
+<p class="font-headline-sm text-headline-sm text-primary font-bold">210 ETB</p>
+<p class="font-label-md text-label-md text-on-surface-variant">12 items</p>
+</div>
+</div>
+<div class="flex gap-md mt-sm">
+<button class="flex-1 bg-primary-container text-on-primary-container font-action-lg text-action-lg h-touch_target_min rounded-xl active:scale-95 transition-transform duration-150">Accept</button>
+<button class="flex-1 bg-surface-container text-on-surface-variant font-action-lg text-action-lg h-touch_target_min rounded-xl active:scale-95 transition-transform duration-150">Decline</button>
+</div>
+</div>
+<!-- Task Card 3: Errand -->
+<div class="bg-surface-container-lowest rounded-xl p-md shadow-sm border border-surface-variant flex flex-col gap-md opacity-90 grayscale-[0.2]">
+<div class="flex justify-between items-start">
+<div class="flex gap-md">
+<div class="w-12 h-12 rounded-lg bg-on-secondary-fixed-variant/10 flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">task</span>
+</div>
+<div class="space-y-xs">
+<span class="bg-surface-container-high text-on-surface-variant text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-tighter">Errand</span>
+<h4 class="font-headline-sm text-headline-sm">Piazza Post Office</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant flex items-center gap-xs">
+<span class="material-symbols-outlined text-[16px]">distance</span> 0.8 km • 5 mins
+                                </p>
+</div>
+</div>
+<div class="text-right">
+<p class="font-headline-sm text-headline-sm text-primary font-bold">85 ETB</p>
+<p class="font-label-md text-label-md text-on-surface-variant">Express</p>
+</div>
+</div>
+<div class="flex gap-md mt-sm">
+<button class="flex-1 bg-primary-container text-on-primary-container font-action-lg text-action-lg h-touch_target_min rounded-xl active:scale-95 transition-transform duration-150">Accept</button>
+<button class="flex-1 bg-surface-container text-on-surface-variant font-action-lg text-action-lg h-touch_target_min rounded-xl active:scale-95 transition-transform duration-150">Decline</button>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar Shell -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-safe_area_bottom pt-sm bg-surface-container-lowest shadow-lg rounded-t-xl">
+<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full px-6 py-2 transition-transform duration-150 active:scale-90" href="#">
+<span class="material-symbols-outlined" data-icon="home" style="font-variation-settings: 'FILL' 1;">home</span>
+<span class="font-label-md text-label-md">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-2 hover:bg-surface-container-high transition-all active:scale-90 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="directions_run">directions_run</span>
+<span class="font-label-md text-label-md">Active Task</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-2 hover:bg-surface-container-high transition-all active:scale-90 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+<span class="font-label-md text-label-md">Profile</span>
+</a>
+</nav>
+<!-- Floating Action Button: Emergency/Support -->
+<button class="fixed right-margin bottom-32 w-14 h-14 bg-error text-on-error rounded-full shadow-xl flex items-center justify-center z-40 active:scale-95 transition-transform duration-150">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">emergency</span>
+</button>
+</body></html>

@@ -1,68 +1,88 @@
 from django.utils import timezone
 from .cancel_task import cancel
+from .task_completion import complete_task
 from customers.models import Task
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 
 def start_delivery(task, driver_profile):
-    """Driver starts delivery — DELIVERY type only"""
+    """Driver starts delivery — for DELIVERY and ERRAND this auto-completes (no 'delivering' state)"""
 
     if task.driver != driver_profile:
         raise ValueError("You are not assigned to this task")
 
-    if task.type != 'DELIVERY':
-        raise ValueError("Only delivery tasks can use this endpoint")
+    valid_sources = {'DELIVERY': ['ARRIVED'], 'SHOPPING': ['PURCHASED'], 'ERRAND': ['ARRIVED']}
+    allowed = valid_sources.get(task.type, ['ARRIVED'])
+    if task.status not in allowed:
+        raise ValueError(
+            f"Cannot start delivery from status {task.status} for {task.type} tasks"
+        )
 
-    if task.status != 'ARRIVED':
-        raise ValueError(f"Cannot start delivery from status {task.status}")
+    if task.type in ('ERRAND', 'DELIVERY'):
+        # ERRAND: end waiting timer (DELIVERY never starts it)
+        if task.type == 'ERRAND':
+            task.waiting_ended_at = timezone.now()
+        # ERRAND and DELIVERY skip DELIVERING — complete immediately
+        task.start_delivery()
+        task.save()
+        complete_task(task, driver_profile)
+        return
 
     task.start_delivery()  # FSM transition
     task.save()
 
-    # TODO: notify customer that driver is on the way
+
+def done_shopping(task, driver_profile):
+    """Driver finishes shopping (SHOPPING only) — ends waiting timer, transitions PURCHASED -> DELIVERING"""
+
+    if task.driver != driver_profile:
+        raise ValueError("You are not assigned to this task")
+
+    if task.type != 'SHOPPING':
+        raise ValueError("Only shopping tasks support this action")
+
+    if task.status != 'PURCHASED':
+        raise ValueError(f"Cannot finish shopping from status {task.status}")
+
+    # End waiting timer
+    task.waiting_ended_at = timezone.now()
+    task.start_delivery()  # PURCHASED -> DELIVERING
+    task.save()
+
+    logger.info(f"Task {task.id}: driver {driver_profile.id} finished shopping")
+
+
+def arrive_at_dropoff(task, driver_profile):
+    """Driver arrives at the errand dropoff location (errands with pickup only)"""
+
+    if task.driver != driver_profile:
+        raise ValueError("You are not assigned to this task")
+
+    if task.type != 'ERRAND':
+        raise ValueError("Only errand tasks support this action")
+
+    if task.status != 'ARRIVED':
+        raise ValueError(f"Cannot arrive at dropoff from status {task.status}")
+
+    if (task.estimated_distance_km or 0) < 0.01:
+        raise ValueError("Task has no pickup location")
+
+    task.arrived_at_dropoff_at = timezone.now()
+    task.waiting_started_at = timezone.now()
+    task.save()
+
+    logger.info(f"Task {task.id}: driver {driver_profile.id} arrived at errand dropoff")
 
 
 def submit_item_amount(task, driver_profile, reported_amount):
-    """Driver submits the item cost for customer approval (SHOPPING/ERRAND only)"""
+    """Driver submits the item cost for purchase (SHOPPING only)"""
 
-    if task.type == 'DELIVERY':
-        raise ValueError("Delivery tasks do not require price approval")
+    if task.type != 'SHOPPING':
+        raise ValueError("Only shopping tasks require price submission")
 
     task.item_cost = reported_amount
-    task.request_approval()
+    task.approve_purchase()  # ARRIVED -> PURCHASED directly, no customer approval needed
     task.save()
-
-    # TODO: notify customer that price approval is required
-
-
-
-def approve_price(task, user):
-    """Customer approves the driver's quoted item cost"""
-
-    if task.user != user:
-        raise ValueError("You are not the owner of this task")
-
-    if task.status != 'AWAITING_APPROVAL':
-        raise ValueError(f"Task cannot be approved from status {task.status}")
-
-    task.waiting_ended_at = timezone.now()
-    task.approve_purchase()  # FSM transition, sets is_price_confirmed = True
-    task.save()
-
-    # TODO: notify driver that price was approved
-
-
-
-def reject_price(task, user):
-    """Customer rejects the driver's quoted item cost — auto cancels task"""
-
-    if task.user != user:
-        raise ValueError("You are not the owner of this task")
-
-    if task.status != 'AWAITING_APPROVAL':
-        raise ValueError(f"Task cannot be rejected from status {task.status}")
-
-    cancel(task, user)
-
-    # TODO: notify driver that price was rejected and prompt them to rate the user
-    # TODO: future — compensation logic for driver
