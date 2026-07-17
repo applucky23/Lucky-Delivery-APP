@@ -1,10 +1,15 @@
 import React, { useState } from 'react';
 import {
   View, Text, ScrollView, TextInput, TouchableOpacity,
-  StyleSheet, StatusBar, Alert,
+  StyleSheet, StatusBar, Alert, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
+import { apiPost } from '../services/authService';
+import LocationPicker from '../components/LocationPicker';
+
+const ADDIS_LAT = 9.0192;
+const ADDIS_LNG = 38.7578;
 
 // ─── Reusable: Step Header ────────────────────────────────────────────────────
 const StepHeader = ({ title, subtitle, current, total }) => (
@@ -58,17 +63,6 @@ const Field = ({ label, placeholder, value, onChange, multiline }) => (
   </View>
 );
 
-// ─── Reusable: Map Placeholder ────────────────────────────────────────────────
-const MapPlaceholder = ({ label }) => (
-  <View style={s.fieldGroup}>
-    {label ? <Text style={s.fieldLabel}>{label}</Text> : null}
-    <View style={s.mapBox}>
-      <MaterialIcons name="map" size={36} color="#D1D5DB" />
-      <Text style={s.mapText}>Map preview</Text>
-    </View>
-  </View>
-);
-
 // ─── Reusable: Toggle (Yes / No) ─────────────────────────────────────────────
 const YesNoToggle = ({ label, value, onChange }) => (
   <View style={s.fieldGroup}>
@@ -113,20 +107,30 @@ const BuyStep1 = ({ data, set }) => (
 
 const BuyStep2 = ({ data, set }) => (
   <>
-    <Field
-      label="Where to buy"
-      placeholder="Store name or area"
-      value={data.whereToBuy}
-      onChange={(v) => set('whereToBuy', v)}
+    <LocationPicker
+      label="Store location (where to buy)"
+      initialLat={data.storeLat}
+      initialLng={data.storeLng}
+      address={data.storeAddress}
+      expandable
+      onLocationChange={(lat, lng, addr) => {
+        set('storeLat', lat);
+        set('storeLng', lng);
+        set('storeAddress', addr);
+      }}
     />
-    <MapPlaceholder label="Store location" />
-    <Field
-      label="Delivery location"
-      placeholder="Your address or drop-off point"
-      value={data.deliveryLocation}
-      onChange={(v) => set('deliveryLocation', v)}
+    <LocationPicker
+      label="Delivery location (where to drop off)"
+      initialLat={data.deliveryLat}
+      initialLng={data.deliveryLng}
+      address={data.deliveryAddress}
+      expandable
+      onLocationChange={(lat, lng, addr) => {
+        set('deliveryLat', lat);
+        set('deliveryLng', lng);
+        set('deliveryAddress', addr);
+      }}
     />
-    <MapPlaceholder label="Delivery location preview" />
     <OptionSelector
       label="Priority"
       options={['Normal', 'Urgent']}
@@ -155,20 +159,30 @@ const PickupStep1 = ({ data, set }) => (
 
 const PickupStep2 = ({ data, set }) => (
   <>
-    <Field
+    <LocationPicker
       label="Pickup location"
-      placeholder="Where should we pick it up?"
-      value={data.pickupLocation}
-      onChange={(v) => set('pickupLocation', v)}
+      initialLat={data.pickupLat}
+      initialLng={data.pickupLng}
+      address={data.pickupAddress}
+      expandable
+      onLocationChange={(lat, lng, addr) => {
+        set('pickupLat', lat);
+        set('pickupLng', lng);
+        set('pickupAddress', addr);
+      }}
     />
-    <MapPlaceholder label="Pickup location preview" />
-    <Field
+    <LocationPicker
       label="Drop-off location"
-      placeholder="Where should we deliver it?"
-      value={data.dropoffLocation}
-      onChange={(v) => set('dropoffLocation', v)}
+      initialLat={data.dropoffLat}
+      initialLng={data.dropoffLng}
+      address={data.dropoffAddress}
+      expandable
+      onLocationChange={(lat, lng, addr) => {
+        set('dropoffLat', lat);
+        set('dropoffLng', lng);
+        set('dropoffAddress', addr);
+      }}
     />
-    <MapPlaceholder label="Drop-off location preview" />
     <OptionSelector
       label="Priority"
       options={['Normal', 'Urgent']}
@@ -198,28 +212,36 @@ const ErrandStep1 = ({ data, set }) => (
 
 const ErrandStep2 = ({ data, set }) => (
   <>
-    <Field
-      label="Where to run the errand"
-      placeholder="Location or address"
-      value={data.errandLocation}
-      onChange={(v) => set('errandLocation', v)}
+    <LocationPicker
+      label="Errand location"
+      initialLat={data.errandLat}
+      initialLng={data.errandLng}
+      address={data.errandAddress}
+      expandable
+      onLocationChange={(lat, lng, addr) => {
+        set('errandLat', lat);
+        set('errandLng', lng);
+        set('errandAddress', addr);
+      }}
     />
-    <MapPlaceholder label="Errand location preview" />
     <YesNoToggle
       label="Do we need to pick something from you first?"
       value={data.needsPickup}
       onChange={(v) => set('needsPickup', v)}
     />
     {data.needsPickup === 'Yes' && (
-      <>
-        <Field
-          label="Your pickup location"
-          placeholder="Current location"
-          value={data.pickupLocation}
-          onChange={(v) => set('pickupLocation', v)}
-        />
-        <MapPlaceholder label="Pickup map preview" />
-      </>
+      <LocationPicker
+        label="Your pickup location"
+        initialLat={data.pickupLat2}
+        initialLng={data.pickupLng2}
+        address={data.pickupAddress2}
+        expandable
+        onLocationChange={(lat, lng, addr) => {
+          set('pickupLat2', lat);
+          set('pickupLng2', lng);
+          set('pickupAddress2', addr);
+        }}
+      />
     )}
     <OptionSelector
       label="Priority"
@@ -230,40 +252,151 @@ const ErrandStep2 = ({ data, set }) => (
   </>
 );
 
+// ─── Haversine + pricing ──────────────────────────────────────────────────────
+const calcDistance = (lat1, lng1, lat2, lng2) => {
+  if (!lat1 || !lng1 || !lat2 || !lng2) return 0;
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng/2)**2;
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)) * 100) / 100;
+};
+
+const calcEstimatedPrice = (serviceType, data) => {
+  let lat1, lng1, lat2, lng2;
+  if (serviceType === 'buy') {
+    lat1 = data.storeLat; lng1 = data.storeLng;
+    lat2 = data.deliveryLat; lng2 = data.deliveryLng;
+  } else if (serviceType === 'pickup') {
+    lat1 = data.pickupLat; lng1 = data.pickupLng;
+    lat2 = data.dropoffLat; lng2 = data.dropoffLng;
+  } else {
+    lat2 = data.errandLat; lng2 = data.errandLng;
+    if (data.needsPickup === 'Yes') {
+      lat1 = data.pickupLat2; lng1 = data.pickupLng2;
+    } else {
+      lat1 = lat2; lng1 = lng2;
+    }
+  }
+  const dist = calcDistance(lat1, lng1, lat2, lng2);
+
+  let price;
+  if (serviceType === 'errand' && dist < 0.01) {
+    price = 30;
+  } else if (serviceType === 'errand') {
+    price = 30 + Math.round(dist * 20);
+  } else {
+    const sizePremiumMap = { 'Small (≤2kg)': 10, 'Medium (≤6kg)': 20, 'Large (≤10kg)': 30 };
+    const sizePremium = sizePremiumMap[data.packageSize] || 0;
+    const distanceCharge = dist <= 1 ? 30 : 30 + Math.ceil(dist - 1) * 10;
+    price = distanceCharge + sizePremium;
+  }
+
+  if (data.priority === 'Urgent') {
+    price = Math.ceil(price * 1.2);
+  }
+  return price;
+};
+
+// ─── Preview Step ─────────────────────────────────────────────────────────────
+const PreviewStep = ({ serviceType, data }) => {
+  const Row = ({ label, value }) => (
+    value ? (
+      <View style={s.previewRow}>
+        <Text style={s.previewLabel}>{label}</Text>
+        <Text style={s.previewValue}>{value}</Text>
+      </View>
+    ) : null
+  );
+
+  const fields = [];
+  if (serviceType === 'buy') {
+    fields.push({ label: 'Category', value: data.category });
+    fields.push({ label: 'Description', value: data.description });
+    fields.push({ label: 'Store location', value: data.storeAddress });
+    fields.push({ label: 'Delivery location', value: data.deliveryAddress });
+  } else if (serviceType === 'pickup') {
+    fields.push({ label: 'Item type', value: data.itemType });
+    fields.push({ label: 'Package size', value: data.packageSize });
+    fields.push({ label: 'Pickup location', value: data.pickupAddress });
+    fields.push({ label: 'Drop-off location', value: data.dropoffAddress });
+  } else if (serviceType === 'errand') {
+    fields.push({ label: 'Task type', value: data.taskType });
+    fields.push({ label: 'Description', value: data.description });
+    fields.push({ label: 'Errand location', value: data.errandAddress });
+    if (data.needsPickup === 'Yes') {
+      fields.push({ label: 'Needs pickup', value: 'Yes' });
+      fields.push({ label: 'Pickup location', value: data.pickupAddress2 });
+    }
+  }
+  fields.push({ label: 'Priority', value: data.priority });
+
+  const rawPrice = calcEstimatedPrice(serviceType, data);
+  const estimatedPrice = rawPrice ? `${rawPrice} ETB` : null;
+  const estimatedDist = (() => {
+    let lat1, lng1, lat2, lng2;
+    if (serviceType === 'buy') {
+      lat1 = data.storeLat; lng1 = data.storeLng;
+      lat2 = data.deliveryLat; lng2 = data.deliveryLng;
+    } else if (serviceType === 'pickup') {
+      lat1 = data.pickupLat; lng1 = data.pickupLng;
+      lat2 = data.dropoffLat; lng2 = data.dropoffLng;
+    } else {
+      lat2 = data.errandLat; lng2 = data.errandLng;
+      if (data.needsPickup === 'Yes') {
+        lat1 = data.pickupLat2; lng1 = data.pickupLng2;
+      } else {
+        lat1 = lat2; lng1 = lng2;
+      }
+    }
+    const d = calcDistance(lat1, lng1, lat2, lng2);
+    return d > 0 ? `${d} km` : null;
+  })();
+
+  return (
+    <View style={s.previewCard}>
+      {fields.map((f, i) => <Row key={i} label={f.label} value={f.value} />)}
+      <View style={s.previewDivider} />
+      {estimatedDist && <Row label="Distance" value={estimatedDist} />}
+      {estimatedPrice && <Row label="Estimated price" value={estimatedPrice} />}
+    </View>
+  );
+};
+
 // ─── Config per service type ──────────────────────────────────────────────────
 const SERVICE_CONFIG = {
   buy: {
     label: 'Buy Something',
-    totalSteps: 2,
-    stepTitles: ['What do you need?', 'Delivery details'],
-    stepSubtitles: ['Choose a category and describe your order', 'Tell us where to buy and deliver'],
+    totalSteps: 3,
+    stepTitles: ['What do you need?', 'Delivery details', 'Review & Confirm'],
+    stepSubtitles: ['Choose a category and describe your order', 'Tell us where to buy and deliver', 'Check everything before submitting'],
     validate: (step, data) => {
       if (step === 1) return data.category && data.description?.trim();
-      if (step === 2) return data.whereToBuy?.trim() && data.deliveryLocation?.trim() && data.priority;
+      if (step === 2) return data.storeLat && data.deliveryLat && data.priority;
       return true;
     },
   },
   pickup: {
     label: 'Pick & Drop',
-    totalSteps: 2,
-    stepTitles: ['Package details', 'Locations & priority'],
-    stepSubtitles: ['What are we picking up?', 'Where from and where to?'],
+    totalSteps: 3,
+    stepTitles: ['Package details', 'Locations & priority', 'Review & Confirm'],
+    stepSubtitles: ['What are we picking up?', 'Where from and where to?', 'Check everything before submitting'],
     validate: (step, data) => {
       if (step === 1) return data.itemType && data.packageSize;
-      if (step === 2) return data.pickupLocation?.trim() && data.dropoffLocation?.trim() && data.priority;
+      if (step === 2) return data.pickupLat && data.dropoffLat && data.priority;
       return true;
     },
   },
   errand: {
     label: 'Run Errand',
-    totalSteps: 2,
-    stepTitles: ['Task details', 'Location & logistics'],
-    stepSubtitles: ['What do you need done?', 'Where and how should we handle it?'],
+    totalSteps: 3,
+    stepTitles: ['Task details', 'Location & logistics', 'Review & Confirm'],
+    stepSubtitles: ['What do you need done?', 'Where and how should we handle it?', 'Check everything before submitting'],
     validate: (step, data) => {
       if (step === 1) return data.taskType && data.description?.trim();
       if (step === 2) {
-        if (!data.errandLocation?.trim() || !data.priority) return false;
-        if (data.needsPickup === 'Yes' && !data.pickupLocation?.trim()) return false;
+        if (!data.errandLat || !data.priority) return false;
+        if (data.needsPickup === 'Yes' && !data.pickupLat2) return false;
         return true;
       }
       return true;
@@ -274,13 +407,28 @@ const SERVICE_CONFIG = {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 const RequestFormScreen = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
-  const serviceType = route?.params?.serviceType ?? 'buy'; // 'buy' | 'pickup' | 'errand'
+  const serviceType = route?.params?.serviceType ?? 'buy';
   const config = SERVICE_CONFIG[serviceType];
 
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({});
+  const [submitting, setSubmitting] = useState(false);
 
   const set = (key, value) => setFormData((prev) => ({ ...prev, [key]: value }));
+
+  const TYPE_MAP = { buy: 'SHOPPING', pickup: 'DELIVERY', errand: 'ERRAND' };
+  const SIZE_MAP = { 'Small (≤2kg)': 'up_to_2kg', 'Medium (≤6kg)': 'up_to_6kg', 'Large (≤10kg)': 'up_to_10kg' };
+  const PRIORITY_MAP = { 'Normal': 'normal', 'Urgent': 'urgent' };
+
+  const buildNote = () => {
+    const parts = [];
+    if (formData.category)         parts.push(`Category: ${formData.category}`);
+    if (formData.description)      parts.push(formData.description);
+    if (formData.taskType)         parts.push(`Task: ${formData.taskType}`);
+    if (formData.itemType)         parts.push(`Item: ${formData.itemType}`);
+    if (formData.packageSize)      parts.push(`Size: ${formData.packageSize}`);
+    return parts.join(' | ');
+  };
 
   const handleNext = () => {
     if (!config.validate(step, formData)) {
@@ -295,18 +443,70 @@ const RequestFormScreen = ({ route, navigation }) => {
     else setStep((s) => s - 1);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!config.validate(step, formData)) {
       Alert.alert('Required', 'Please fill in all required fields.');
       return;
     }
-    console.log('📦 Form submitted:', { serviceType, ...formData });
-    Alert.alert('Request Submitted!', 'We\'ll find you a worker right away.', [
-      { text: 'OK', onPress: () => navigation.navigate('Home') },
-    ]);
+    setSubmitting(true);
+    try {
+      let pickup_lat, pickup_lng, dropoff_lat, dropoff_lng;
+
+      if (serviceType === 'buy') {
+        pickup_lat = formData.storeLat ?? ADDIS_LAT;
+        pickup_lng = formData.storeLng ?? ADDIS_LNG;
+        dropoff_lat = formData.deliveryLat ?? ADDIS_LAT;
+        dropoff_lng = formData.deliveryLng ?? ADDIS_LNG;
+      } else if (serviceType === 'pickup') {
+        pickup_lat = formData.pickupLat ?? ADDIS_LAT;
+        pickup_lng = formData.pickupLng ?? ADDIS_LNG;
+        dropoff_lat = formData.dropoffLat ?? ADDIS_LAT;
+        dropoff_lng = formData.dropoffLng ?? ADDIS_LNG;
+      } else {
+        dropoff_lat = formData.errandLat ?? ADDIS_LAT;
+        dropoff_lng = formData.errandLng ?? ADDIS_LNG;
+        pickup_lat = formData.needsPickup === 'Yes'
+          ? (formData.pickupLat2 ?? ADDIS_LAT)
+          : dropoff_lat;
+        pickup_lng = formData.needsPickup === 'Yes'
+          ? (formData.pickupLng2 ?? ADDIS_LNG)
+          : dropoff_lng;
+      }
+
+      const r6 = (v) => Number(Number(v).toFixed(6));
+
+      const payload = {
+        type: TYPE_MAP[serviceType],
+        pickup_lat: r6(pickup_lat),
+        pickup_lng: r6(pickup_lng),
+        dropoff_lat: r6(dropoff_lat),
+        dropoff_lng: r6(dropoff_lng),
+        priority: PRIORITY_MAP[formData.priority] || 'normal',
+        item_size: serviceType === 'pickup' ? (SIZE_MAP[formData.packageSize] || null) : null,
+        pickup_address: formData.storeAddress || formData.pickupAddress || formData.pickupAddress2 || '',
+        dropoff_address: formData.deliveryAddress || formData.dropoffAddress || formData.errandAddress || '',
+        note: buildNote(),
+      };
+      console.log('[Submit] payload:', JSON.stringify(payload));
+      const result = await apiPost('/tasks/', payload);
+      console.log('[Submit] response:', JSON.stringify(result));
+      if (result?.id) {
+        Alert.alert('Request Submitted!', "We'll find you a worker right away.", [
+          { text: 'OK', onPress: () => navigation.navigate('TaskList') },
+        ]);
+      } else {
+        const serverMsg = typeof result === 'object' ? JSON.stringify(result) : result;
+        Alert.alert('Error', serverMsg || 'Failed to submit request. Please try again.');
+      }
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Network error. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const renderStep = () => {
+    if (step === 3) return <PreviewStep serviceType={serviceType} data={formData} />;
     if (serviceType === 'buy') {
       return step === 1
         ? <BuyStep1 data={formData} set={set} />
@@ -328,7 +528,6 @@ const RequestFormScreen = ({ route, navigation }) => {
     <View style={[s.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="dark-content" />
 
-      {/* Header */}
       <View style={s.header}>
         <TouchableOpacity onPress={handleBack} style={s.backBtn}>
           <MaterialIcons name="arrow-back" size={24} color="#111827" />
@@ -354,7 +553,6 @@ const RequestFormScreen = ({ route, navigation }) => {
         </View>
       </ScrollView>
 
-      {/* Bottom action buttons */}
       <View style={[s.bottomBar, { paddingBottom: insets.bottom || 16 }]}>
         <TouchableOpacity style={s.btnSecondary} onPress={handleBack} activeOpacity={0.8}>
           <Text style={s.btnSecondaryText}>{step === 1 ? 'Cancel' : 'Back'}</Text>
@@ -366,9 +564,14 @@ const RequestFormScreen = ({ route, navigation }) => {
             <MaterialIcons name="arrow-forward" size={18} color="white" style={{ marginLeft: 6 }} />
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={s.btnPrimary} onPress={handleSubmit} activeOpacity={0.8}>
-            <MaterialIcons name="check-circle" size={18} color="white" style={{ marginRight: 6 }} />
-            <Text style={s.btnPrimaryText}>Submit</Text>
+          <TouchableOpacity style={s.btnPrimary} onPress={handleSubmit} activeOpacity={0.8} disabled={submitting}>
+            {submitting
+              ? <ActivityIndicator color="white" />
+              : <>
+                  <MaterialIcons name="check-circle" size={18} color="white" style={{ marginRight: 6 }} />
+                  <Text style={s.btnPrimaryText}>Submit</Text>
+                </>
+            }
           </TouchableOpacity>
         )}
       </View>
@@ -376,11 +579,9 @@ const RequestFormScreen = ({ route, navigation }) => {
   );
 };
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F9FAFB' },
 
-  // Header
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, height: 56, backgroundColor: '#F9FAFB',
@@ -389,10 +590,8 @@ const s = StyleSheet.create({
   backBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
   headerTitle: { fontSize: 17, fontWeight: '700', color: '#111827' },
 
-  // Scroll
   scroll: { paddingHorizontal: 20, paddingTop: 20 },
 
-  // Step header
   stepHeader: { marginBottom: 24 },
   stepCount: { fontSize: 12, fontWeight: '700', color: '#16A34A', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 },
   stepBarRow: { flexDirection: 'row', gap: 6, marginBottom: 16 },
@@ -401,7 +600,6 @@ const s = StyleSheet.create({
   stepTitle: { fontSize: 22, fontWeight: '800', color: '#111827', marginBottom: 4 },
   stepSubtitle: { fontSize: 14, color: '#6B7280' },
 
-  // Form card
   formCard: {
     backgroundColor: '#FFFFFF', borderRadius: 20,
     padding: 20, gap: 20,
@@ -409,7 +607,6 @@ const s = StyleSheet.create({
     shadowOpacity: 0.05, shadowRadius: 12, elevation: 2,
   },
 
-  // Field
   fieldGroup: { gap: 8 },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: '#374151' },
   input: {
@@ -419,7 +616,6 @@ const s = StyleSheet.create({
   },
   inputMulti: { height: 88, textAlignVertical: 'top' },
 
-  // Chips
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
@@ -429,15 +625,6 @@ const s = StyleSheet.create({
   chipText: { fontSize: 13, fontWeight: '600', color: '#6B7280' },
   chipTextSelected: { color: '#16A34A' },
 
-  // Map placeholder
-  mapBox: {
-    height: 140, borderRadius: 14, backgroundColor: '#F3F4F6',
-    borderWidth: 1, borderColor: '#E5E7EB', borderStyle: 'dashed',
-    justifyContent: 'center', alignItems: 'center', gap: 8,
-  },
-  mapText: { fontSize: 13, color: '#9CA3AF', fontWeight: '500' },
-
-  // Toggle
   toggleRow: { flexDirection: 'row', gap: 12 },
   toggleBtn: {
     flex: 1, paddingVertical: 12, borderRadius: 12,
@@ -448,7 +635,15 @@ const s = StyleSheet.create({
   toggleText: { fontSize: 14, fontWeight: '600', color: '#6B7280' },
   toggleTextActive: { color: '#16A34A' },
 
-  // Bottom bar
+  previewCard: { gap: 0 },
+  previewRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
+  },
+  previewLabel: { fontSize: 14, color: '#6B7280', fontWeight: '500' },
+  previewValue: { fontSize: 14, color: '#111827', fontWeight: '600', flex: 1, textAlign: 'right' },
+  previewDivider: { height: 1, backgroundColor: '#E5E7EB', marginVertical: 4 },
+
   bottomBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     flexDirection: 'row', gap: 12, paddingHorizontal: 20, paddingTop: 16,

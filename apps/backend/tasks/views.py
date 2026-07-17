@@ -10,7 +10,7 @@ from customers.models import Task, DriverProfile
 from .permissions import IsTaskOwnerOrAdminOrDriver, IsOwnerOrAdmin, IsDriver, IsAdminUser
 from .services.cancel_task import cancel
 from .services.task_creation import create_task
-from .services.geo_validation import validate_driver_at_pickup, mark_task_arrived
+from .services.geo_validation import check_arrival_distance, mark_task_arrived, MAX_ARRIVAL_DISTANCE_METERS
 from .services.task_progression import submit_item_amount, approve_price, reject_price, start_delivery
 from .services.task_accept_reject import accept_task, reject_task
 from .services.manual_assignments import manual_assign
@@ -276,9 +276,15 @@ class MarkArrivedAPIView(APIView):
                 driver_location = DriverLocation.objects.get(driver=driver_profile)
             except DriverLocation.DoesNotExist:
                 return Response({'error': 'Driver location not found'}, status=status.HTTP_400_BAD_REQUEST)
-            validate_driver_at_pickup(driver_profile, task, driver_location=driver_location)
+            
+            distance = check_arrival_distance(driver_profile, task, driver_location=driver_location)
+            
+            response_data = {'message': 'Arrival confirmed'}
+            if distance is not None and distance > MAX_ARRIVAL_DISTANCE_METERS:
+                response_data['warning'] = f'You are {distance}m away from pickup location (threshold: {MAX_ARRIVAL_DISTANCE_METERS}m)'
+            
             mark_task_arrived(task, driver_profile)
-            return Response({'message': 'Arrival confirmed'}, status=status.HTTP_200_OK)
+            return Response(response_data, status=status.HTTP_200_OK)
         except ValueError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception:
@@ -286,6 +292,53 @@ class MarkArrivedAPIView(APIView):
                 {'error': 'An unexpected error occurred while marking arrival'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class DriverAssignmentsView(APIView):
+    """
+    GET /api/v1/tasks/driver/assignments/
+    Returns all PENDING task assignments for the authenticated driver.
+    """
+    permission_classes = [IsAuthenticated, IsDriver]
+
+    def get(self, request):
+        try:
+            driver_profile = get_driver_profile_or_404(request.user)
+        except DriverProfile.DoesNotExist:
+            return Response({'error': 'Driver profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        assignments = (
+            TaskAssignment.objects
+            .filter(driver=driver_profile, outcome='PENDING')
+            .select_related('task', 'task__user')
+            .order_by('-notified_at')
+        )
+        serializer = TaskAssignmentSerializer(assignments, many=True)
+        return Response(serializer.data)
+
+
+class DriverActiveTaskView(APIView):
+    """
+    GET /api/v1/tasks/driver/active/
+    Returns the driver's current active task (ASSIGNED, ARRIVED, etc.)
+    """
+    permission_classes = [IsAuthenticated, IsDriver]
+
+    def get(self, request):
+        try:
+            driver_profile = get_driver_profile_or_404(request.user)
+        except DriverProfile.DoesNotExist:
+            return Response({'error': 'Driver profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        active_task = Task.objects.filter(
+            driver=driver_profile,
+            status__in=['ASSIGNED', 'ARRIVED', 'AWAITING_APPROVAL', 'PURCHASED', 'DELIVERING', 'AWAITING_PAYMENT']
+        ).select_related('user').order_by('-created_at').first()
+
+        if not active_task:
+            return Response({'error': 'No active task'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(TaskDetailSerializer(active_task).data)
 
 
 class StartDeliveryAPIView(APIView):

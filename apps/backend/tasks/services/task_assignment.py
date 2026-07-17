@@ -37,20 +37,24 @@ def dispatch(task):
                 )
             )
         
-        # Bulk create assignments
+        # Bulk create assignments (ignore conflicts from race conditions)
         created_assignments = TaskAssignment.objects.bulk_create(
             assignments_to_create,
-            batch_size=5
+            batch_size=5,
+            ignore_conflicts=True
         )
         
-        logger.info(f"Task {task.id} dispatched to {len(created_assignments)} drivers")
-
-        notify_task_offer(best_drivers, task)
-
+        count = len(created_assignments)
+        if count:
+            logger.info(f"Task {task.id} dispatched to {count} drivers")
+            notify_task_offer(best_drivers, task)
+        else:
+            logger.warning(f"Task {task.id}: all assignments already exist (duplicates)")
+        
         return {
             'success': True,
-            'message': f'Task dispatched to {len(created_assignments)} drivers',
-            'drivers_notified': len(created_assignments),
+            'message': f'Task dispatched to {count} drivers',
+            'drivers_notified': count,
             'assignment_ids': [assignment.id for assignment in created_assignments]
         }
         

@@ -41,9 +41,9 @@ const HomeScreen = ({ navigation, route }) => {
           <MaterialIcons name="location-on" size={20} color="#16A34A" />
           <Text style={styles.locationText}>Addis Ababa</Text>
         </View>
-        <TouchableOpacity style={styles.iconButton}>
+        <View style={styles.iconButton}>
           <MaterialIcons name="notifications-none" size={24} color="#6B7280" />
-        </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView 
@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
   },
   locationContainer: { flexDirection: 'row', alignItems: 'center' },
   locationText: { marginLeft: 4, fontWeight: '700', fontSize: 14, color: '#141b2b' },
-  iconButton: { padding: 8 },
+  iconButton: { padding: 8, position: 'relative' },
   scrollContent: { paddingHorizontal: 24, paddingTop: 10 },
   greetingSection: { marginBottom: 24 },
   greetingTitle: { fontSize: 30, fontWeight: '800', color: '#111827' },

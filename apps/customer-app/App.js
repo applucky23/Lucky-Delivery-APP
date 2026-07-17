@@ -21,6 +21,8 @@ import HelpScreen from './src/screens/HelpScreen';
 import PrivacyScreen from './src/screens/PrivacyScreen';
 import TermsScreen from './src/screens/TermsScreen';
 import LanguageScreen from './src/screens/LanguageScreen';
+import { RatingProvider } from './src/contexts/RatingContext';
+import RatingOverlay from './src/components/RatingOverlay';
 
 const Stack = createNativeStackNavigator();
 
@@ -51,26 +53,29 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <NavigationContainer>
-        <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={initialRoute}>
-          <Stack.Screen name="Welcome" component={WelcomeScreen} />
-          <Stack.Screen name="Otp" component={OtpScreen} />
-          <Stack.Screen name="PersonalDetail" component={PersonalDetailScreen} />
-          <Stack.Screen name="Home" component={HomeScreen} options={{ animation: 'none' }} />
-          <Stack.Screen name="RequestForm" component={RequestFormScreen} />
-          <Stack.Screen name="TaskList" component={TaskListScreen} options={{ animation: 'none' }} />
-          <Stack.Screen name="TaskDetail" component={TaskDetailScreen} />
-          <Stack.Screen name="TaskTracking" component={TaskTrackingScreen} />
-          <Stack.Screen name="Profile" component={ProfileScreen} options={{ animation: 'none' }} />
-          <Stack.Screen name="ProfileEdit" component={ProfileEditScreen} />
-          <Stack.Screen name="Wallet" component={WalletScreen} />
-          <Stack.Screen name="Coupon" component={CouponScreen} />
-          <Stack.Screen name="Help" component={HelpScreen} />
-          <Stack.Screen name="Privacy" component={PrivacyScreen} />
-          <Stack.Screen name="Terms" component={TermsScreen} />
-          <Stack.Screen name="Language" component={LanguageScreen} />
-        </Stack.Navigator>
-      </NavigationContainer>
+      <RatingProvider>
+        <NavigationContainer>
+          <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={initialRoute}>
+            <Stack.Screen name="Welcome" component={WelcomeScreen} />
+            <Stack.Screen name="Otp" component={OtpScreen} />
+            <Stack.Screen name="PersonalDetail" component={PersonalDetailScreen} />
+            <Stack.Screen name="Home" component={HomeScreen} options={{ animation: 'none' }} />
+            <Stack.Screen name="RequestForm" component={RequestFormScreen} />
+            <Stack.Screen name="TaskList" component={TaskListScreen} options={{ animation: 'none' }} />
+            <Stack.Screen name="TaskDetail" component={TaskDetailScreen} />
+            <Stack.Screen name="TaskTracking" component={TaskTrackingScreen} />
+            <Stack.Screen name="Profile" component={ProfileScreen} options={{ animation: 'none' }} />
+            <Stack.Screen name="ProfileEdit" component={ProfileEditScreen} />
+            <Stack.Screen name="Wallet" component={WalletScreen} />
+            <Stack.Screen name="Coupon" component={CouponScreen} />
+            <Stack.Screen name="Help" component={HelpScreen} />
+            <Stack.Screen name="Privacy" component={PrivacyScreen} />
+            <Stack.Screen name="Terms" component={TermsScreen} />
+            <Stack.Screen name="Language" component={LanguageScreen} />
+          </Stack.Navigator>
+        </NavigationContainer>
+        <RatingOverlay />
+      </RatingProvider>
     </SafeAreaProvider>
   );
 }

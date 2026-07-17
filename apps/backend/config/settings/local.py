@@ -11,7 +11,7 @@ from .base import *
 DEBUG = True
 
 ALLOWED_HOSTS = ['*']
-CSRF_TRUSTED_ORIGINS = ['https://1ae4-102-218-51-6.ngrok-free.app']
+CSRF_TRUSTED_ORIGINS = ['https://a303-196-189-145-165.ngrok-free.app']
 
 # CORS settings for development
 CORS_ALLOW_ALL_ORIGINS = True
@@ -25,10 +25,13 @@ DATABASE_URL = f"postgresql://postgres.{user}:{password}@aws-1-eu-central-1.pool
 DATABASES = {
     'default': dj_database_url.config(
         default=DATABASE_URL,
-        conn_max_age=600,
+        conn_max_age=60,
         ssl_require=True
     )
 }
+
+# Disable server-side cursors for PgBouncer compatibility (Supabase pooler port 6543)
+DATABASES['default']['DISABLE_SERVER_SIDE_CURSORS'] = True
 
 # Development-specific logging
 LOGGING = {
