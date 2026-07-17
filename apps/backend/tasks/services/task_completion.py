@@ -78,10 +78,12 @@ def complete_task(task, driver_profile):
 
     # Update driver
     driver = driver_profile
-    driver.current_debt = Decimal(str(driver.current_debt)) + commission
+    previous_debt = Decimal(str(driver.current_debt))
+    driver.current_debt = previous_debt + commission
     driver.is_available = True
     driver.total_tasks += 1
     driver.save(update_fields=['current_debt', 'is_available', 'total_tasks'])
+    just_blocked = not (previous_debt >= driver.debt_limit) and driver.is_blocked
 
     # Log commission as wallet transaction
     WalletTransaction.objects.create(
@@ -112,10 +114,9 @@ def complete_task(task, driver_profile):
         }
     )
 
-    # TODO: prompt both driver and customer to rate each other
     notify(
         event='TASK_COMPLETED',
-        user=task.customer,
+        user=task.user,
         task=task,
         context={'task_type': task.get_type_display(), 'final_price': str(final_price)},
         data={'screen': 'rate_driver', 'task_id': task.id},
@@ -123,7 +124,7 @@ def complete_task(task, driver_profile):
     notify_commission_added(driver_profile, task, commission)
     notify(
         event='RATE_REMINDER',
-        user=task.customer,
+        user=task.user,
         task=task,
         context={'rate_message': 'How was your experience? Rate your driver.'},
         data={'screen': 'rate_driver', 'task_id': task.id},
@@ -135,3 +136,10 @@ def complete_task(task, driver_profile):
         context={'rate_message': 'How was your experience? Rate your customer.'},
         data={'screen': 'rate_customer', 'task_id': task.id},
     )
+    if just_blocked:
+        notify(
+            event='PAYMENT_REQUIRED',
+            user=driver_profile.user,
+            context={'amount': str(driver.current_debt)},
+            data={'screen': 'earnings', 'debt': str(driver.current_debt)},
+        )

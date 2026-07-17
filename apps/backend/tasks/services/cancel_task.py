@@ -44,11 +44,19 @@ def cancel(task,user):
         )
         notify(
             event='TASK_CANCELLED',
-            user=task.customer,
+            user=task.user,
             task=task,
             context={'task_type': task.get_type_display()},
             data={'screen': 'home', 'task_id': task.id},
         )
+        if task.driver:
+            notify(
+                event='TASK_CANCELLED',
+                user=task.driver.user,
+                task=task,
+                context={'task_type': task.get_type_display()},
+                data={'screen': 'home', 'task_id': task.id},
+            )
         return
     # owner rule - can only cancel pending tasks
     if task.status not in ['PENDING', 'ASSIGNED','AWAITING_APPROVAL']:
@@ -80,8 +88,16 @@ def cancel(task,user):
     )
     notify(
         event='TASK_CANCELLED',
-        user=task.customer,
+        user=task.user,
         task=task,
         context={'task_type': task.get_type_display()},
         data={'screen': 'home', 'task_id': task.id},
     )
+    if task.driver:
+        notify(
+            event='TASK_CANCELLED',
+            user=task.driver.user,
+            task=task,
+            context={'task_type': task.get_type_display()},
+            data={'screen': 'home', 'task_id': task.id},
+        )

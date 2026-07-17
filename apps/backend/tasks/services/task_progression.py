@@ -100,4 +100,10 @@ def reject_price(task, user):
         )
 
     notify_price_rejected(task.driver, task)
-    # TODO: future — compensation logic for driver
+    notify(
+        event='RATE_REMINDER',
+        user=task.driver.user,
+        task=task,
+        context={'rate_message': 'The customer rejected your quote. How would you rate them?'},
+        data={'screen': 'rate_customer', 'task_id': task.id, 'rating_direction': 'driver_to_customer'},
+    )

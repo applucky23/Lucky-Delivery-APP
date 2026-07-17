@@ -1,14 +1,29 @@
 import logging
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
+import math
+from django.db import IntegrityError
+from django.db.models import Avg, Count
+from django.utils import timezone
 from rest_framework import status
-from .models import UserProfile, DriverProfile, DriverLocation, Task, CommissionPayment, TaskAssignment
-from .serializers import UserProfileSerializer, DriverRegistrationSerializer, DriverProfileSerializer, DriverProfileUpdateSerializer, CreateRatingSerializer
-from .models import Rating
-from .services.driver_registration import register_driver
-from .services.driver_dispatch import redispatch_nearby_tasks
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from tasks.permissions import IsDriver
+from tasks.serializers import TaskAssignmentSerializer
+from tasks.services.assignment_expiry import expire_stale_assignments
 from tasks.utils import get_driver_profile_or_404
+from .models import (
+    DriverLocation, DriverProfile,
+    Rating, Task, TaskAssignment, UserProfile,
+)
+from .serializers import (
+    CreateRatingSerializer, DriverProfileSerializer,
+    DriverProfileUpdateSerializer, DriverRegistrationSerializer,
+    UserProfileSerializer,
+)
+from .services.driver_dispatch import redispatch_nearby_tasks
+from .services.driver_registration import register_driver
+from .services.rating_service import check_already_rated
+
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +79,7 @@ class UserProfileView(APIView):
                 logger.info(f'[Profile] Created profile for user id={request.user.id}')
         except IntegrityError:
             profile = UserProfile.objects.get(user=request.user)
-        
+
         serializer = UserProfileSerializer(profile, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
@@ -88,10 +103,7 @@ class DriverRegisterView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        data = serializer.validated_data
-        user = request.user
-
-        profile, created = register_driver(user, data)
+        profile, created = register_driver(request.user, serializer.validated_data)
 
         return Response({
             'message': 'Driver profile submitted. Pending admin verification.',
@@ -104,7 +116,7 @@ class DriverProfileView(APIView):
     GET /api/v1/driver/profile/
     Returns the authenticated driver's profile.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsDriver]
 
     def get(self, request):
         try:
@@ -123,7 +135,7 @@ class DriverProfileUpdateView(APIView):
     Driver updates their own editable profile fields.
     Re-dispatches unassigned PENDING tasks when driver comes online.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsDriver]
 
     def patch(self, request):
         try:
@@ -154,7 +166,7 @@ class DriverLocationUpdateView(APIView):
     Updates the driver's current GPS location.
     Creates a DriverLocation record if one doesn't exist.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsDriver]
 
     def post(self, request):
         try:
@@ -176,10 +188,7 @@ class DriverLocationUpdateView(APIView):
 
         loc, created = DriverLocation.objects.update_or_create(
             driver=driver_profile,
-            defaults={
-                'latitude': latitude,
-                'longitude': longitude,
-            }
+            defaults={'latitude': latitude, 'longitude': longitude},
         )
 
         # If driver just reported location for the first time and is online,
@@ -197,7 +206,7 @@ class DriverRefreshView(APIView):
     Triggers re-dispatch for nearby pending tasks + returns updated profile/assignments.
     Used by pull-to-refresh on the driver home screen.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsDriver]
 
     def post(self, request):
         try:
@@ -205,165 +214,20 @@ class DriverRefreshView(APIView):
         except DriverProfile.DoesNotExist:
             return Response({'error': 'Driver profile not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Expire stale assignments before re-dispatch
-        from tasks.services.assignment_expiry import expire_stale_assignments
         expire_stale_assignments()
 
         if profile.is_online:
             redispatch_nearby_tasks(profile)
 
-        from tasks.serializers import TaskAssignmentSerializer
-        from customers.models import TaskAssignment
-
         assignments = TaskAssignment.objects.filter(
             driver=profile,
             outcome='PENDING',
-        ).select_related('task', 'task__user', 'task__driver').order_by('-notified_at')
+        ).select_related('task', 'task__user', 'task__driver', 'task__driver__user').order_by('-notified_at')
 
-        serializer = TaskAssignmentSerializer(assignments, many=True)
         return Response({
-            'assignments': serializer.data,
+            'assignments': TaskAssignmentSerializer(assignments, many=True).data,
             'is_online': profile.is_online,
         })
-
-
-class DriverEarningsView(APIView):
-    """
-    GET /api/v1/driver/earnings/
-    Returns the driver's earnings balance + rolling daily/weekly/monthly totals.
-    """
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        try:
-            profile = request.user.driver_profile
-        except DriverProfile.DoesNotExist:
-            return Response({'error': 'Driver profile not found'}, status=status.HTTP_404_NOT_FOUND)
-
-        from django.utils import timezone
-        from datetime import timedelta
-        from django.db.models import Sum
-        from .models import WalletTransaction
-
-        now = timezone.now()
-        qs = WalletTransaction.objects.filter(driver=profile, type='EARNING')
-
-        daily = qs.filter(created_at__gte=now - timedelta(hours=24)).aggregate(total=Sum('amount'))['total'] or 0
-        weekly = qs.filter(created_at__gte=now - timedelta(days=7)).aggregate(total=Sum('amount'))['total'] or 0
-        monthly = qs.filter(created_at__gte=now - timedelta(days=30)).aggregate(total=Sum('amount'))['total'] or 0
-
-        return Response({
-            'balance': str(profile.balance),
-            'debt': str(profile.current_debt),
-            'daily': str(daily),
-            'weekly': str(weekly),
-            'monthly': str(monthly),
-        })
-
-
-class PayCommissionView(APIView):
-    """
-    POST /api/v1/driver/pay-commission/
-    Body: { amount, method, reference, screenshot?, note? }
-    """
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        try:
-            profile = request.user.driver_profile
-        except DriverProfile.DoesNotExist:
-            return Response({'error': 'Driver profile not found'}, status=status.HTTP_404_NOT_FOUND)
-
-        amount = request.data.get('amount')
-        method = request.data.get('method', '').upper()
-        reference = request.data.get('reference', '').strip()
-
-        if not amount:
-            return Response({'error': 'Amount is required.'}, status=status.HTTP_400_BAD_REQUEST)
-        if method not in ('TELEBIRR', 'CBE'):
-            return Response({'error': 'Method must be TELEBIRR or CBE.'}, status=status.HTTP_400_BAD_REQUEST)
-        if not reference:
-            return Response({'error': 'Reference number is required.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        from decimal import Decimal, InvalidOperation
-        try:
-            amount = Decimal(str(amount))
-        except (InvalidOperation, ValueError):
-            return Response({'error': 'Invalid amount.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if amount <= 0:
-            return Response({'error': 'Amount must be positive.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if CommissionPayment.objects.filter(driver=profile, status='PENDING').exists():
-            return Response(
-                {'error': 'You already have a payment under review. Cancel it first to submit a new one.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        payment = CommissionPayment.objects.create(
-            driver=profile,
-            amount=amount,
-            method=method,
-            reference=reference,
-            screenshot=request.data.get('screenshot', '') or None,
-            note=request.data.get('note', ''),
-        )
-
-        return Response({
-            'message': 'Payment submitted, under review.',
-            'payment_id': payment.id,
-        }, status=status.HTTP_201_CREATED)
-
-
-class CommissionPaymentHistoryView(APIView):
-    """
-    GET /api/v1/driver/commission-payments/
-    Returns the driver's payment history.
-    """
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        try:
-            profile = request.user.driver_profile
-        except DriverProfile.DoesNotExist:
-            return Response({'error': 'Driver profile not found'}, status=status.HTTP_404_NOT_FOUND)
-
-        payments = profile.commission_payments.all().order_by('-created_at')
-        data = [{
-            'id': p.id,
-            'amount': str(p.amount),
-            'method': p.method,
-            'reference': p.reference,
-            'screenshot': p.screenshot,
-            'status': p.status,
-            'admin_note': p.admin_note,
-            'created_at': p.created_at.isoformat(),
-        } for p in payments]
-
-        return Response({'payments': data})
-
-
-class CancelCommissionPaymentView(APIView):
-    """
-    POST /api/v1/driver/cancel-commission-payment/
-    Cancels the driver's PENDING commission payment so they can resubmit.
-    """
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        try:
-            profile = request.user.driver_profile
-        except DriverProfile.DoesNotExist:
-            return Response({'error': 'Driver profile not found'}, status=status.HTTP_404_NOT_FOUND)
-
-        pending = CommissionPayment.objects.filter(driver=profile, status='PENDING').first()
-        if not pending:
-            return Response({'error': 'No pending payment to cancel.'}, status=status.HTTP_404_NOT_FOUND)
-
-        pending.status = 'CANCELLED'
-        pending.save(update_fields=['status'])
-
-        return Response({'message': 'Pending payment cancelled. You can now submit a new one.'})
 
 
 class DriverDashboardView(APIView):
@@ -372,7 +236,7 @@ class DriverDashboardView(APIView):
     Returns assignments + earnings + latest commission payment in one request.
     Replaces 3 separate calls for polling efficiency.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsDriver]
 
     def get(self, request):
         try:
@@ -381,38 +245,29 @@ class DriverDashboardView(APIView):
             return Response({'error': 'Driver profile not found'}, status=status.HTTP_404_NOT_FOUND)
 
         # ── Assignments ──────────────────────────────────────────────
-        from tasks.serializers import TaskAssignmentSerializer
         assignments = TaskAssignment.objects.filter(
             driver=profile, outcome='PENDING'
-        ).select_related('task', 'task__user').order_by('-notified_at')
+        ).select_related('task', 'task__user', 'task__driver', 'task__driver__user').order_by('-notified_at')
 
-        # ── Earnings ─────────────────────────────────────────────────
-        from django.utils import timezone
-        from datetime import timedelta
-        from django.db.models import Sum
-        from .models import WalletTransaction
-        now = timezone.now()
-        qs = WalletTransaction.objects.filter(driver=profile, type='EARNING')
-        daily_total = qs.filter(created_at__gte=now - timedelta(hours=24)).aggregate(total=Sum('amount'))['total'] or 0
-        weekly_total = qs.filter(created_at__gte=now - timedelta(days=7)).aggregate(total=Sum('amount'))['total'] or 0
-        monthly_total = qs.filter(created_at__gte=now - timedelta(days=30)).aggregate(total=Sum('amount'))['total'] or 0
-
-        # ── Latest commission payment ────────────────────────────────
-        latest = profile.commission_payments.order_by('-created_at').first()
+        # ── Earnings + latest payment (delegated to payments app) ────
+        from payments.views import _earnings_totals
+        from .models import CommissionPayment
+        totals = _earnings_totals(profile, timezone.now())
+        latest = CommissionPayment.objects.filter(driver=profile).order_by('-created_at').first()
 
         return Response({
             'assignments': TaskAssignmentSerializer(assignments, many=True).data,
             'earnings': {
                 'balance': str(profile.balance),
-                'debt': str(profile.current_debt),
-                'daily': str(daily_total),
-                'weekly': str(weekly_total),
-                'monthly': str(monthly_total),
+                'debt':    str(profile.current_debt),
+                'daily':   str(totals['daily']),
+                'weekly':  str(totals['weekly']),
+                'monthly': str(totals['monthly']),
             },
             'latest_payment': {
-                'id': latest.id,
-                'amount': str(latest.amount),
-                'status': latest.status,
+                'id':         latest.id,
+                'amount':     str(latest.amount),
+                'status':     latest.status,
                 'admin_note': latest.admin_note,
             } if latest else None,
         })
@@ -431,44 +286,50 @@ class CreateRatingView(APIView):
 
         rating = serializer.save()
         return Response({
-            'id': rating.id,
-            'rating': rating.rating,
-            'comment': rating.comment,
+            'id':         rating.id,
+            'rating':     rating.rating,
+            'comment':    rating.comment,
             'created_at': rating.created_at,
         }, status=status.HTTP_201_CREATED)
 
     def get(self, request, task_id):
-        try:
-            rating = Rating.objects.get(from_user=request.user, task_id=task_id)
+        # Single query: fetch the rating directly; absence means either no task or not rated
+        rating = check_already_rated(request.user, task_id)
+        if rating:
             return Response({
-                'id': rating.id,
-                'rating': rating.rating,
-                'comment': rating.comment,
+                'id':         rating.id,
+                'rating':     rating.rating,
+                'comment':    rating.comment,
                 'created_at': rating.created_at,
             })
-        except Rating.DoesNotExist:
-            return Response({'rated': False}, status=status.HTTP_200_OK)
+        if not Task.objects.filter(id=task_id).exists():
+            return Response({'error': 'Task not found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'rated': False}, status=status.HTTP_200_OK)
 
 
 class DriverRatingsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        from django.db.models import Avg, Count
+        if request.user.role != 'DRIVER':
+            return Response({'error': 'Only drivers can access this endpoint.'}, status=status.HTTP_403_FORBIDDEN)
+
         driver_profile = get_driver_profile_or_404(request.user)
         ratings = Rating.objects.filter(to_user=driver_profile.user)
         agg = ratings.aggregate(avg=Avg('rating'), count=Count('id'))
-        recent = ratings.select_related('from_user').order_by('-created_at')[:5]
+        recent = ratings.select_related('from_user', 'from_user__profile').order_by('-created_at')[:5]
+
+        avg_val = float(agg['avg']) if agg['avg'] else 0.0
 
         return Response({
-            'average_rating': float(agg['avg']) if agg['avg'] else 0,
+            'average_rating': avg_val if not math.isnan(avg_val) else 0.0,
             'rating_count': agg['count'],
             'recent_reviews': [
                 {
-                    'rating': r.rating,
-                    'comment': r.comment,
-                    'from_customer_name': r.from_user.profile.name if hasattr(r.from_user, 'profile') and r.from_user.profile.name else r.from_user.username,
-                    'created_at': r.created_at,
+                    'rating':             r.rating,
+                    'comment':            r.comment,
+                    'from_customer_name': getattr(r.from_user, 'profile', None) and r.from_user.profile.name or r.from_user.username,
+                    'created_at':         r.created_at,
                 }
                 for r in recent
             ],

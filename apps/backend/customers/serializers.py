@@ -116,6 +116,11 @@ class DriverProfileUpdateSerializer(serializers.ModelSerializer):
 class CreateRatingSerializer(serializers.Serializer):
     rating = serializers.IntegerField(min_value=1, max_value=5)
     comment = serializers.CharField(required=False, allow_blank=True, max_length=500)
+    rating_direction = serializers.ChoiceField(
+        choices=['customer_to_driver', 'driver_to_customer'],
+        default='customer_to_driver',
+        required=False
+    )
 
     def validate(self, attrs):
         request = self.context.get('request')
@@ -123,46 +128,32 @@ class CreateRatingSerializer(serializers.Serializer):
         if not request or not task_id:
             raise serializers.ValidationError('Missing context')
 
-        from .models import Task, Rating
+        from .models import Task
         try:
             task = Task.objects.select_related('driver__user').get(id=task_id)
         except Task.DoesNotExist:
             raise serializers.ValidationError('Task not found')
 
-        if task.user != request.user:
-            raise serializers.ValidationError('You can only rate your own tasks')
-
-        if task.status != 'COMPLETED':
-            raise serializers.ValidationError('Can only rate completed tasks')
-
-        if not task.driver:
-            raise serializers.ValidationError('No driver assigned to this task')
-
-        if Rating.objects.filter(from_user=request.user, task=task).exists():
-            raise serializers.ValidationError('You have already rated this task')
-
         attrs['task'] = task
         return attrs
 
     def create(self, validated_data):
+        from .services.rating_service import create_rating, RatingError
+        
         request = self.context['request']
         task = validated_data['task']
-        driver_user = task.driver.user
+        rating_value = validated_data['rating']
+        comment = validated_data.get('comment', '')
+        rating_direction = validated_data.get('rating_direction', 'customer_to_driver')
 
-        rating = Rating.objects.create(
-            from_user=request.user,
-            to_user=driver_user,
-            task=task,
-            rating=validated_data['rating'],
-            comment=validated_data.get('comment', ''),
-        )
-
-        # Incremental arithmetic — avoids full aggregate query
-        old_count = driver_user.rating_count or 0
-        old_avg = driver_user.rating or 0
-        new_count = old_count + 1
-        driver_user.rating = ((old_avg * old_count) + validated_data['rating']) / new_count
-        driver_user.rating_count = new_count
-        driver_user.save(update_fields=['rating', 'rating_count'])
-
-        return rating
+        try:
+            rating = create_rating(
+                request_user=request.user,
+                task=task,
+                rating_value=rating_value,
+                comment=comment,
+                rating_direction=rating_direction
+            )
+            return rating
+        except RatingError as e:
+            raise serializers.ValidationError(str(e))

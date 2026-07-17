@@ -112,6 +112,7 @@ class DriverProfile(models.Model):
         return f"Driver: {self.user.username}"
 
     def save(self, *args, **kwargs):
+        self.is_blocked = self.current_debt >= self.debt_limit
         self.is_verified = self.status == 'APPROVED'
         super().save(*args, **kwargs)
 

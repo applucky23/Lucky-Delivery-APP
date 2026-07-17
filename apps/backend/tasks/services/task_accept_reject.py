@@ -163,7 +163,6 @@ def reject_task(task, driver_profile):
         if not has_pending:
             # All drivers rejected — re-dispatch
             logger.warning(f"All drivers rejected task {task.id}, re-dispatching...")
-            # TODO: An edge case we will see to it here!!!!
             redispatch_result = dispatch(task)
 
             if not redispatch_result['success']:
@@ -171,12 +170,11 @@ def reject_task(task, driver_profile):
                 logger.error(f"Re-dispatch failed for task {task.id}")
                 notify(
                     event='NO_DRIVERS_FOUND',
-                    user=task.customer,
+                    user=task.user,
                     task=task,
                     context={'task_type': task.get_type_display()},
                     data={'screen': 'home', 'task_id': task.id},
                 )
-                # TODO: [SUPABASE JOB] handle max retry limit
 
         return {
             'success': True,
